@@ -46,6 +46,39 @@ chmod +x listar-eventos.sh   # normalmente já vem com permissão de execução
 ./listar-eventos.sh 2026-12-31 infantil
 ```
 
+### Exemplos por concelho
+
+```bash
+./listar-eventos.sh 2026-12-31 coimbra
+./listar-eventos.sh 2026-12-31 "figueira da foz"
+./listar-eventos.sh 2026-12-31 soure
+./listar-eventos.sh 2026-12-31 "condeixa-a-nova"
+./listar-eventos.sh 2026-12-31 pombal
+./listar-eventos.sh 2026-12-31 aveiro
+```
+
+Condeixa-a-Nova e Soure têm menos atividade cultural registada nas fontes
+usadas do que os outros concelhos — não é invulgar o filtro devolver poucos
+ou nenhuns eventos, consoante a agenda real no momento em que corres o
+comando (não é um bug).
+
+### Exemplos por tipo de evento
+
+O texto do filtro corresponde à taxonomia de cada fonte (ver [Categorias](#categorias)),
+não a uma lista fixa — por isso um termo mais genérico costuma apanhar mais variantes
+(ex.: `teatro` encontra tanto "Teatro" como "Teatro e Dança").
+
+```bash
+./listar-eventos.sh 2026-12-31 teatro
+./listar-eventos.sh 2026-12-31 concertos
+./listar-eventos.sh 2026-12-31 infantil
+./listar-eventos.sh 2026-12-31 exposições
+./listar-eventos.sh 2026-12-31 cinema
+./listar-eventos.sh 2026-12-31 "stand-up"
+./listar-eventos.sh 2026-12-31 festas
+./listar-eventos.sh 2026-12-31 mercados
+```
+
 ## Arquitetura: pipeline em dois passos
 
 ```
@@ -87,11 +120,31 @@ Os resultados abaixo podem estar incompletos.
 |---|---|---|
 | Agenda de Coimbra (oficial, Câmara + Universidade de Coimbra) | [`providers/agenda-coimbra.js`](providers/agenda-coimbra.js) | Coimbra (Convento de São Francisco, TAGV, UC Exploratório, Casa Municipal da Cultura, etc.) |
 | Convento São Francisco (oficial, Coimbra Cultura e Congressos) | [`providers/convento-sao-francisco.js`](providers/convento-sao-francisco.js) | Convento São Francisco, com detalhe de sala (Antiga Igreja, Grande Auditório, etc.) |
-| ViralAgenda (agregador nacional) | [`providers/viral-agenda.js`](providers/viral-agenda.js) | Coimbra, Figueira da Foz (inclui o CAE), Soure, Pombal, Aveiro |
+| ViralAgenda (agregador nacional) | [`providers/viral-agenda.js`](providers/viral-agenda.js) | Coimbra, Figueira da Foz (inclui o CAE), Soure, Condeixa-a-Nova, Pombal, Aveiro |
+| BOL — Bilheteira Online (`bol.pt`) | [`providers/bol.js`](providers/bol.js) | Eventos de bilheteira nos distritos de Coimbra, Aveiro e Leiria (cobre indiretamente todos os concelhos pedidos) |
 
 Todas as fontes são páginas renderizadas no servidor (HTML puro), por isso a
-recolha é um `fetch()` HTTP simples seguido de parsing com `cheerio` — não é
-necessário correr um browser dentro do container.
+recolha é um `fetch()` HTTP simples seguido de parsing (com `cheerio`, exceto
+o BOL, que já vem em JSON-LD estruturado — ver abaixo) — não é necessário
+correr um browser dentro do container.
+
+O BOL é um caso especial: em vez do HTML normal, a homepage vem com dezenas
+de blocos `<script type="application/ld+json">` no formato schema.org
+`Event` (o mesmo que a Google usa para SEO de eventos), com nome, data/hora e
+local já estruturados — nem precisa de `cheerio`, só `JSON.parse`. Duas
+limitações a ter em conta:
+- O campo `addressLocality` do BOL é o **distrito**, não o concelho exato —
+  um evento em Águeda ou Santa Maria da Feira aparece como `"Aveiro"` (o
+  distrito), tal como a Figueira da Foz ficaria dentro de `"Coimbra"`.
+  Mantemos o valor tal como o BOL o publica, sem inventar mais precisão do
+  que a fonte dá.
+- O BOL não inclui categoria/género do evento — esses eventos aparecem
+  sempre com `categoria: "Sem categoria"`, por isso só são encontrados por
+  filtros de concelho/local/título, não por tipo.
+- A pesquisa avançada do próprio BOL (por distrito/sala) carrega os
+  resultados via JavaScript, por isso o scraper usa sempre a homepage
+  (que já vem cheia de eventos reais) e filtra localmente pelos distritos
+  que interessam, em vez de tentar replicar esse filtro.
 
 ### Sites oficiais investigados e não incluídos (com o motivo)
 
@@ -106,19 +159,17 @@ Preferimos documentar isto a forçar um scraper frágil ou a inventar dados:
 | TAGV (`tagv.pt/agenda`) | Site esteve em baixo durante a investigação (502 Bad Gateway) — indisponibilidade que tornaria a fonte pouco fiável mesmo se fosse scrapável. Já coberto via ViralAgenda/agenda.coimbra.pt. |
 | Conservatório de Música de Coimbra (`conservatoriomcoimbra.pt`) | Blog WordPress com a categoria "Eventos" desatualizada (último artigo de abril de 2025) — daria dados obsoletos, não uma agenda viva. |
 | Praxis / Praxis Beer Fest (`praxisbeerfest.pt`) | É a página de um festival anual único (com museu e restaurante associados), não uma agenda recorrente com múltiplos eventos — scraping traria no máximo uma entrada, esforço desproporcionado. |
-| CAE — Centro de Artes e Espectáculos (`cae.pt`) | A página "Programação" do site próprio carrega a lista de eventos de forma que não fica presente no HTML devolvido (nem via `fetch()` simples, nem no DOM after load) — parece exigir interação adicional. Já coberto de forma robusta via ViralAgenda (`/pt/coimbra/figueira-da-foz`). |
-| BOL — Bilheteira Online (ex.: `tagv.bol.pt`) | Aplicação ASP.NET WebForms antiga: a lista de espetáculos é montada via postback/UpdatePanel, sem API JSON disponível — replicar isso exigiria simular tokens `__VIEWSTATE` a cada pedido (muito frágil) ou um browser real. |
+| CAE — Centro de Artes e Espectáculos (`cae.pt`) | A página "Programação" do site próprio carrega a lista de eventos de forma que não fica presente no HTML devolvido (nem via `fetch()` simples, nem no DOM after load) — parece exigir interação adicional. Já coberto de forma robusta via ViralAgenda (`/pt/coimbra/figueira-da-foz`) e via BOL. |
+| BOL por subdomínio de sala (ex.: `tagv.bol.pt`) | Aplicação ASP.NET WebForms antiga: a lista de espetáculos é montada via postback/UpdatePanel, sem API JSON disponível — replicar isso exigiria simular tokens `__VIEWSTATE` a cada pedido (muito frágil) ou um browser real. O site principal `bol.pt` não tem este problema (ver [Fontes de dados](#fontes-de-dados)) e por isso está incluído. |
 
-### Limitação conhecida
+### Nota sobre o slug de Condeixa-a-Nova
 
-Não encontrámos uma fonte pública e estruturada fiável para **Condeixa-a-Nova**
-— o slug do ViralAgenda para Condeixa-a-Nova devolve 404, a "agenda" da
-Câmara Municipal de Soure é uma imagem (não é texto pesquisável) e
-`cultura.cm-pombal.pt` não devolveu conteúdo. Em vez de adivinhar URLs ou
-fazer scraping de texto livre muito frágil (e por isso pouco fiável),
-optámos por não inventar cobertura para este caso — os eventos de
-Condeixa-a-Nova só aparecem se surgirem indiretamente nas fontes já
-cobertas.
+Ao contrário da maioria dos concelhos no ViralAgenda, o slug de Condeixa-a-Nova
+não segue o padrão "nome-com-hifens" (`condeixa-a-nova` devolve 404) — é
+`condeixaanova`, sem hífens nenhuns. Só foi encontrado ao inspecionar a lista
+de concelhos embutida no próprio site; por isso os slugs em
+[`providers/viral-agenda.js`](providers/viral-agenda.js) foram confirmados um
+a um em vez de gerados a partir do nome.
 
 ### Categorias
 

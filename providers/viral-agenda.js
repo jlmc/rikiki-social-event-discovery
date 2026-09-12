@@ -13,12 +13,14 @@ const cheerio = require('cheerio');
 const BASE_URL = 'https://www.viralagenda.com';
 
 // Confirmados manualmente durante a investigação (URLs que devolvem
-// listagens reais, não 404): concelhos pedidos que não constam aqui não
-// tinham um slug válido conhecido nesta fonte.
+// listagens reais, não 404). Os slugs nem sempre seguem o mesmo padrão —
+// "condeixaanova" não tem hífens, ao contrário de "figueira-da-foz" — por
+// isso foram confirmados um a um em vez de gerados a partir do nome.
 const LOCAIS = [
   { distrito: 'coimbra', concelho: 'coimbra', nomeConcelho: 'Coimbra' },
   { distrito: 'coimbra', concelho: 'figueira-da-foz', nomeConcelho: 'Figueira da Foz' },
   { distrito: 'coimbra', concelho: 'soure', nomeConcelho: 'Soure' },
+  { distrito: 'coimbra', concelho: 'condeixaanova', nomeConcelho: 'Condeixa-a-Nova' },
   { distrito: 'leiria', concelho: 'pombal', nomeConcelho: 'Pombal' },
   { distrito: 'aveiro', concelho: 'aveiro', nomeConcelho: 'Aveiro' },
 ];

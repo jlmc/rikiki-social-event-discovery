@@ -17,6 +17,7 @@ const path = require('path');
 const agendaCoimbra = require('./providers/agenda-coimbra');
 const viralAgenda = require('./providers/viral-agenda');
 const conventoSaoFrancisco = require('./providers/convento-sao-francisco');
+const bol = require('./providers/bol');
 
 const FICHEIRO_SAIDA = path.join(__dirname, 'eventos.json');
 
@@ -64,6 +65,7 @@ async function main() {
       url: conventoSaoFrancisco.url,
       obterEventos: conventoSaoFrancisco.obterEventos,
     },
+    { nome: bol.nome, url: bol.url, obterEventos: bol.obterEventos },
     ...fontesViralAgenda,
   ];
 
