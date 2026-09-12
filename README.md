@@ -1,19 +1,19 @@
 # rikiki-social-event-discovery
 
-Script CLI que lista eventos culturais e infantis na região de Coimbra (e
-concelhos vizinhos) entre agora e uma data limite futura, correndo dentro de
-um container Docker (`node:alpine`) — sem necessidade de instalar Node.js na
-máquina local.
+Script CLI que agrega e lista eventos culturais e infantis **reais** na região de
+Coimbra (e concelhos vizinhos) entre agora e uma data limite futura. Os dados
+vêm de scraping ao vivo de fontes públicas (não há nenhuma base de dados
+inventada) e todo o processamento corre dentro de containers Docker
+(`node:24-alpine`) — sem necessidade de instalar Node.js na máquina local.
 
 ## Pré-requisitos
 
 - **Docker** instalado e o daemon a correr (Docker Desktop no macOS/Windows,
   ou Docker Engine no Linux).
 - Bash (o script usa `#!/bin/bash`).
+- Ligação à Internet (necessária apenas no passo 1, a recolha de dados).
 
-Não é preciso ter Node.js instalado localmente — o `eventos.js` corre sempre
-dentro do container `node:alpine`, que é descarregado automaticamente no
-primeiro uso (`docker pull node:alpine`).
+Não é preciso ter Node.js instalado localmente.
 
 ## Instalação
 
@@ -30,63 +30,104 @@ chmod +x listar-eventos.sh   # normalmente já vem com permissão de execução
 ```
 
 - **`<data-limite-AAAA-MM-DD>`** (obrigatório): data limite, no formato ISO
-  `AAAA-MM-DD`. Tem de ser uma data futura (posterior ao momento em que o
-  script corre). O script lista todos os eventos entre **agora** e essa data,
-  inclusive.
+  `AAAA-MM-DD`. Tem de ser uma data futura. O script lista todos os eventos
+  entre **agora** e essa data, inclusive.
 - **`[filtro-categoria-ou-local]`** (opcional): texto livre que filtra os
-  resultados por categoria, concelho, local do evento ou tipo de público
-  (correspondência parcial, sem distinguir maiúsculas/minúsculas). Se omitido,
-  lista todos os eventos no intervalo de datas.
+  resultados por categoria, concelho, local ou fonte do evento
+  (correspondência parcial, sem distinguir maiúsculas/minúsculas).
 
 ### Exemplos
 
-Listar todos os eventos até ao final do ano:
-
 ```bash
 ./listar-eventos.sh 2026-12-31
-```
-
-Só eventos em Coimbra:
-
-```bash
 ./listar-eventos.sh 2026-12-31 coimbra
-```
-
-Só eventos infantis/familiares:
-
-```bash
+./listar-eventos.sh 2026-12-31 "figueira da foz"
+./listar-eventos.sh 2026-12-31 teatro
 ./listar-eventos.sh 2026-12-31 infantil
 ```
 
-Só concertos:
-
-```bash
-./listar-eventos.sh 2026-12-31 concertos
-```
-
-Só eventos na Figueira da Foz:
-
-```bash
-./listar-eventos.sh 2026-12-31 "figueira da foz"
-```
-
-### Exemplo de saída
+## Arquitetura: pipeline em dois passos
 
 ```
-A pesquisar eventos até 2026-12-31 (filtro: "coimbra")...
-
-==============================================================================
-Eventos culturais e infantis: 2026-09-12 -> 2026-12-31  (filtro: "coimbra")
-==============================================================================
-
-[domingo, 20/09/2026, 20:00] Festas — Coimbra / Praxis Cervejeira
-  Praxis Cervejeira de Outono
-  Festa académica com bandas locais e tasquinhas de rua.
-...
-
-------------------------------------------------------------------------------
-Total: 6 evento(s) encontrado(s).
+listar-eventos.sh
+  │
+  ├─ 1) docker run  (COM rede)        → node recolher-eventos.js  → escreve eventos.json
+  │
+  └─ 2) docker run  (--network none)  → node listar-eventos.js <data> [filtro]
 ```
+
+- **Passo 1 — recolha** (`recolher-eventos.js`, dentro do container `node:24-alpine`
+  com rede): corre um `npm install` (só a dependência `cheerio`, que fica em
+  cache no `node_modules` montado — só é lento na 1ª execução) e depois chama
+  cada [provider](#fontes-de-dados) em paralelo. Cada fonte corre isolada em
+  `try/catch`: se uma falhar, as restantes continuam normalmente. O resultado
+  agregado, deduplicado (por título + dia) e ordenado por data é escrito em
+  `eventos.json`, incluindo o estado de cada fonte (`ok`/`erro`).
+- **Passo 2 — apresentação** (`listar-eventos.js`, dentro de outro container
+  `node:24-alpine`, desta vez com `--network none`): lê `eventos.json`, valida
+  os argumentos, filtra pela janela `[agora, data-limite]` + filtro opcional e
+  imprime os resultados. **Nunca tem acesso à rede** — mesmo tendo acabado de
+  instalar uma dependência de terceiros no passo 1, este passo fica isolado
+  por defesa em profundidade.
+
+Se alguma fonte tiver falhado na última recolha, aparece sempre um **aviso
+bem visível** no topo da listagem (nunca falha silenciosa):
+
+```
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+AVISO: 1 fonte(s) falharam na última recolha de dados:
+  - agenda.coimbra.pt: fetch failed
+Os resultados abaixo podem estar incompletos.
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+```
+
+## Fontes de dados
+
+| Provider | Ficheiro | Cobertura confirmada |
+|---|---|---|
+| Agenda de Coimbra (oficial, Câmara + Universidade de Coimbra) | [`providers/agenda-coimbra.js`](providers/agenda-coimbra.js) | Coimbra (Convento de São Francisco, TAGV, UC Exploratório, Casa Municipal da Cultura, etc.) |
+| Convento São Francisco (oficial, Coimbra Cultura e Congressos) | [`providers/convento-sao-francisco.js`](providers/convento-sao-francisco.js) | Convento São Francisco, com detalhe de sala (Antiga Igreja, Grande Auditório, etc.) |
+| ViralAgenda (agregador nacional) | [`providers/viral-agenda.js`](providers/viral-agenda.js) | Coimbra, Figueira da Foz (inclui o CAE), Soure, Pombal, Aveiro |
+
+Todas as fontes são páginas renderizadas no servidor (HTML puro), por isso a
+recolha é um `fetch()` HTTP simples seguido de parsing com `cheerio` — não é
+necessário correr um browser dentro do container.
+
+### Sites oficiais investigados e não incluídos (com o motivo)
+
+Foram avaliados os sites oficiais de outros locais pedidos, mas não ficaram
+com scraper próprio — por não serem tecnicamente viáveis com um simples
+`fetch()`, ou por já estarem bem cobertos indiretamente pelas fontes acima.
+Preferimos documentar isto a forçar um scraper frágil ou a inventar dados:
+
+| Site | Motivo |
+|---|---|
+| UC Exploratório (`exploratorio.pt/agenda`) | Site construído em Wix (SPA client-side, "wix-thunderbolt") — a agenda não vem no HTML devolvido pelo servidor, precisaria de um browser real. Já coberto via ViralAgenda/agenda.coimbra.pt. |
+| TAGV (`tagv.pt/agenda`) | Site esteve em baixo durante a investigação (502 Bad Gateway) — indisponibilidade que tornaria a fonte pouco fiável mesmo se fosse scrapável. Já coberto via ViralAgenda/agenda.coimbra.pt. |
+| Conservatório de Música de Coimbra (`conservatoriomcoimbra.pt`) | Blog WordPress com a categoria "Eventos" desatualizada (último artigo de abril de 2025) — daria dados obsoletos, não uma agenda viva. |
+| Praxis / Praxis Beer Fest (`praxisbeerfest.pt`) | É a página de um festival anual único (com museu e restaurante associados), não uma agenda recorrente com múltiplos eventos — scraping traria no máximo uma entrada, esforço desproporcionado. |
+| CAE — Centro de Artes e Espectáculos (`cae.pt`) | A página "Programação" do site próprio carrega a lista de eventos de forma que não fica presente no HTML devolvido (nem via `fetch()` simples, nem no DOM after load) — parece exigir interação adicional. Já coberto de forma robusta via ViralAgenda (`/pt/coimbra/figueira-da-foz`). |
+| BOL — Bilheteira Online (ex.: `tagv.bol.pt`) | Aplicação ASP.NET WebForms antiga: a lista de espetáculos é montada via postback/UpdatePanel, sem API JSON disponível — replicar isso exigiria simular tokens `__VIEWSTATE` a cada pedido (muito frágil) ou um browser real. |
+
+### Limitação conhecida
+
+Não encontrámos uma fonte pública e estruturada fiável para **Condeixa-a-Nova**
+— o slug do ViralAgenda para Condeixa-a-Nova devolve 404, a "agenda" da
+Câmara Municipal de Soure é uma imagem (não é texto pesquisável) e
+`cultura.cm-pombal.pt` não devolveu conteúdo. Em vez de adivinhar URLs ou
+fazer scraping de texto livre muito frágil (e por isso pouco fiável),
+optámos por não inventar cobertura para este caso — os eventos de
+Condeixa-a-Nova só aparecem se surgirem indiretamente nas fontes já
+cobertas.
+
+### Categorias
+
+Ao contrário de uma lista fixa de categorias, cada fonte publica a sua
+própria taxonomia (ex.: "Teatro e Dança", "Cinema e Vídeo", "Mercados, Festas,
+Feiras e Romarias", "Infantil"). Mantemos a categoria tal como a fonte a
+publica — forçá-la para uma lista fixa distorceria dados reais. O filtro por
+substring continua a funcionar normalmente (`teatro` encontra "Teatro e
+Dança").
 
 ## Erros comuns
 
@@ -98,41 +139,25 @@ Total: 6 evento(s) encontrado(s).
 | Data no passado ou igual a agora | `a data limite (...) tem de ser posterior a agora` | 1 |
 | Docker não instalado / não está no `PATH` | `o Docker não está instalado ou não está no PATH` | 1 |
 | Docker instalado mas o daemon não responde | `o daemon do Docker não está a responder` | 1 |
+| `eventos.json` não existe (passo 1 nunca correu) | `eventos.json não encontrado. Corre primeiro o passo de recolha...` | 1 |
+| Uma fonte falhou na recolha | aviso visível no topo da listagem | 0 (recolha parcial, não é erro fatal) |
 | Filtro sem correspondências | `Nenhum evento encontrado para os critérios indicados.` | 0 (não é erro) |
 
-## Categorias de eventos
+## Arquitetura de ficheiros
 
-- Stand-up comedy
-- Teatro
-- Concertos
-- Festas
-- Eventos Infantis / Familiares
-- Exposições
-- Museus
+- **[`listar-eventos.sh`](listar-eventos.sh)** — casca em Bash: valida
+  argumentos e o ambiente Docker, depois orquestra os dois passos.
+- **[`recolher-eventos.js`](recolher-eventos.js)** — passo 1: chama os
+  providers, agrega, deduplica e escreve `eventos.json`.
+- **[`listar-eventos.js`](listar-eventos.js)** — passo 2: lê `eventos.json`,
+  filtra e imprime os resultados (e os avisos de fontes falhadas).
+- **[`providers/`](providers/)** — um ficheiro por fonte de dados; cada um
+  exporta `{ nome, url, obterEventos() }` (ou, no caso do ViralAgenda, uma
+  função que devolve uma lista destes, uma por concelho).
+- **`eventos.json`** — artefacto gerado pelo passo 1 (não versionado,
+  está no `.gitignore`).
 
-## Locais cobertos pela base de dados simulada
-
-- **Coimbra**: Convento de São Francisco, Teatro Académico de Gil Vicente
-  (TAGV), UC Exploratório, Praxis Cervejeira, Conservatório de Música, Praça
-  da Canção.
-- **Figueira da Foz**: Centro de Artes e Espectáculos (CAE).
-- **Outros concelhos**: Condeixa-a-Nova, Soure, Pombal, Aveiro.
-
-## Arquitetura
-
-- **[`listar-eventos.sh`](listar-eventos.sh)** — casca em Bash: valida os
-  argumentos (número, formato da data) e o ambiente (Docker instalado e a
-  correr) e depois invoca o container. Não conhece a lógica de datas nem os
-  dados dos eventos.
-- **[`eventos.js`](eventos.js)** — corre dentro do container `node:alpine`
-  (montado via `docker run -v`). Contém a "base de dados" simulada de
-  eventos e toda a lógica de validação semântica da data e de filtragem
-  (janela temporal `[agora, data-limite]` + filtro opcional).
-
-O container corre com `--network none`: os dados são simulados/embutidos no
-próprio script, por isso o processo não precisa de acesso à rede — isto
-reduz a superfície de ataque sem custo funcional.
-
-Para ligar a uma fonte de dados real (API ou base de dados), o único ponto a
-alterar é a função que produz o array `eventos` em `eventos.js` — a lógica de
-filtragem por data/categoria/local mantém-se igual.
+Para adicionar uma nova fonte: criar um novo ficheiro em `providers/` que
+exporte a mesma interface e registá-lo em `recolher-eventos.js`. A lógica de
+filtragem por data/categoria/local em `listar-eventos.js` não precisa de
+mudar.

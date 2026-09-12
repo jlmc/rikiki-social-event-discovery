@@ -1,3 +1,7 @@
+# Node.js / dados gerados
+node_modules/
+eventos.json
+
 # JetBrains IDEs (IntelliJ IDEA, WebStorm, etc.)
 .idea/
 *.iml

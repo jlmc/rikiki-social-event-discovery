@@ -1,0 +1,9 @@
+{
+  "name": "rikiki-social-event-discovery",
+  "private": true,
+  "version": "1.0.0",
+  "description": "CLI que agrega e lista eventos culturais/infantis reais da região de Coimbra, correndo dentro de containers Docker (node:24-alpine).",
+  "dependencies": {
+    "cheerio": "^1.0.0"
+  }
+}
