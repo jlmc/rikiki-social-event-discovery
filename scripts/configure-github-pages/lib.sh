@@ -11,9 +11,16 @@ require_gh_token() {
 }
 
 authenticate() {
-  echo "== Authenticating gh CLI =="
-  echo "$GH_TOKEN" | gh auth login --with-token
-  gh auth status
+  echo "== Checking gh CLI authentication =="
+  # `gh` picks up GH_TOKEN automatically for every command — no `gh auth
+  # login` step needed (and calling it while GH_TOKEN is set actively
+  # fails: "the GH_TOKEN environment variable is being used for
+  # authentication... clear it first"). `gh auth status` just confirms
+  # the token works before we rely on it below.
+  if ! gh auth status; then
+    echo "Error: gh could not authenticate with the given GH_TOKEN." >&2
+    exit 1
+  fi
 }
 
 # Triggers a workflow_dispatch run and watches it to completion, printing
