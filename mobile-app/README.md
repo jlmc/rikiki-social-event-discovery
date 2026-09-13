@@ -33,13 +33,43 @@ restriction). No special configuration is needed; CORS simply doesn't apply to t
 ```
 
 This runs `npm install` and `npx expo start` inside a `node:24` Docker container (no local
-Node.js needed) and prints a QR code in the terminal. Open **Expo Go** on your phone and scan
-it — the app loads and runs there, with real network requests to the 4 sources above.
+Node.js needed) and prints a QR code in the terminal.
 
-Previewing on the computer (`npm run web`, i.e. `expo start --web`) works for checking layout,
-but **the real search won't return results there** — that mode renders in an actual browser
-engine, so it hits the exact same CORS wall described above. Only Expo Go (or a native build,
-out of scope for now — see [Limitations](#limitations)) has working native `fetch()`.
+### Testing on a real phone (the only way to test real search)
+
+1. Install the free **Expo Go** app on your phone (iOS/Android — links in
+   [Prerequisites](#prerequisites)).
+2. Make sure the phone is on the **same Wi-Fi network** as this computer.
+3. Run `./start-mobile-app.sh` and wait for the QR code to appear in the terminal.
+4. Open Expo Go and scan the QR code (on iPhone, the regular Camera app also works — it offers
+   to open Expo Go).
+5. The app loads on the phone and searches the 4 real sources for real — this works because
+   React Native's `fetch()` isn't subject to the browser CORS restriction described above.
+
+The script tries to auto-detect this machine's LAN IP (`ipconfig getifaddr en0`/`en1`) so the
+QR code points somewhere your phone can actually reach — a container's own internal IP would
+be useless to a phone on the Wi-Fi. If the QR code doesn't connect (e.g. a different network
+interface, a VPN active, or detection just failing), pass it explicitly:
+
+```bash
+EXPO_PACKAGER_HOSTNAME=<this-machine's-LAN-IP> ./start-mobile-app.sh
+```
+
+(find that IP under System Settings → Wi-Fi → Details, or run `ipconfig getifaddr en0`).
+
+### Previewing the layout in a browser (no real search — see below)
+
+```bash
+docker run --rm -it -p 8081:8081 -p 19006:19006 \
+  -v "$PWD":/app -w /app node:24 sh -c "npm install && npx expo start --web --lan"
+```
+
+Opens the same UI at `http://localhost:19006`, still with no local Node.js install. **The real
+search won't return results here** — `expo start --web` renders the app inside an actual
+browser engine (via `react-native-web`), so it hits the exact same CORS wall described above.
+This is only useful for checking layout/navigation, not for testing the scraping. See
+["Can this open in a browser like Slack's web app?"](#can-this-open-in-a-browser-like-slacks-web-app)
+below for why a browser can't do this app's real job without adding a server back.
 
 ## How it works
 
@@ -73,6 +103,32 @@ out of scope for now — see [Limitations](#limitations)) has working native `fe
   ([`src/lib/text-utils.js`](src/lib/text-utils.js)), the dedupe-by-completeness logic
   ([`src/lib/collect-events.js`](src/lib/collect-events.js)) — is a direct port with no
   behavioural changes.
+
+## Can this open in a browser like Slack's web app?
+
+Not without adding a server back — and that's a real, deliberate trade-off, not a missing
+feature. Slack's web app works in a browser because the browser only ever talks to **Slack's
+own backend** (same origin, or a backend that explicitly allows it via CORS) — the browser
+never fetches, say, a random company's website directly. Slack's servers do that kind of work,
+if any, on their side.
+
+This project's browser problem is different: the browser would need to fetch `agenda.coimbra.pt`,
+`viralagenda.com`, `coimbraconvento.pt` and `bol.pt` **directly**, and none of them allow it
+(no CORS headers — see [above](#why-this-isnt-just-a-website)). There's no version of "just a
+web page" that fixes this, because the restriction is enforced by the browser itself, not by
+anything in this app's code.
+
+To get a real browser experience (open a URL, no phone needed, no Expo Go), the only way is to
+bring a server back: something server-side (in our own infrastructure, not the browser) does
+the scraping — exactly like Slack's backend does the equivalent work for Slack — and the
+browser only ever talks to that server, which is allowed to set its own CORS headers (or just
+be same-origin). This is the earlier "PWA + `server.js`" design from this project's history,
+discarded specifically because "sem servidor nenhum" was the explicit requirement at the time.
+If that requirement has changed and a browser-first experience matters more now than "no
+server, on-device only," that's worth deciding explicitly — it changes the architecture
+(a server component comes back, e.g. reusing [`../cli`](../cli/README.md)'s providers behind a
+small API), not just this file. It doesn't have to replace this mobile app — the two can
+coexist as separate front-ends, same as `cli/` and `mobile-app/` do today.
 
 ## Limitations
 
