@@ -1,0 +1,63 @@
+name: Publish web/ to GitHub Pages
+
+# GitHub Pages only serves static files — it can't run a server. The
+# browser can't scrape the real sources directly either (none of them
+# send CORS headers — see mobile-app/README.md). So the actual scraping
+# happens here, in this workflow's runner (a server, just not one we
+# operate ourselves), on a schedule; the result (events.json) is
+# published as a static file alongside web/'s HTML/CSS/JS. The browser
+# only ever fetches that same-origin file — no live third-party requests,
+# no CORS problem.
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # every 6 hours
+  workflow_dispatch: {} # allows a manual run from the Actions tab
+  push:
+    branches: [master]
+    paths:
+      - 'web/**'
+      - 'cli/collect-events.js'
+      - 'cli/providers/**'
+      - '.github/workflows/publish-web.yml'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Collect real events (reuses cli/'s tested scraping pipeline)
+        working-directory: cli
+        run: |
+          npm ci
+          node collect-events.js
+
+      - name: Assemble the static site
+        run: |
+          cp cli/events.json web/events.json
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
