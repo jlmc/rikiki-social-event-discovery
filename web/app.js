@@ -132,6 +132,15 @@ function runSearch(event) {
 
 form.addEventListener('submit', runSearch);
 
+// Also re-run the search on any filter change, not just a click on
+// "Pesquisar" — a native date-picker's calendar popup swallows the first
+// click that lands outside it (used just to close the popup), so a click
+// on the button right after picking a date can silently do nothing. This
+// makes the button an explicit re-trigger rather than the only way in.
+for (const el of [startInput, endInput, locationSelect, typeSelect]) {
+  el.addEventListener('change', runSearch);
+}
+
 async function init() {
   // Default the date inputs: end = 90 days from now, start = today — the
   // page always opens with a sensible non-empty window, no query needed.
