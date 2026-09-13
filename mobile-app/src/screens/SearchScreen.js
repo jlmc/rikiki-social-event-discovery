@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { View, Text, FlatList, ActivityIndicator, StyleSheet, SafeAreaView } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import FilterForm from '../components/FilterForm';
@@ -13,13 +13,15 @@ import { filterEvents } from '../lib/filter-events';
 // module: nothing here is a data file the project manages or ships.
 const CACHE_KEY = 'rikiki:last-collection';
 
+const EMPTY_STORE = { generatedAt: null, sources: [], events: [] };
+
 export default function SearchScreen() {
-  const [store, setStore] = useState({ generatedAt: null, sources: [], events: [] });
+  const [store, setStore] = useState(EMPTY_STORE);
+  const [query, setQuery] = useState(null);
   const [results, setResults] = useState([]);
   const [collecting, setCollecting] = useState(false);
   const [error, setError] = useState('');
   const [selectedEvent, setSelectedEvent] = useState(null);
-  const lastQuery = useRef(null);
 
   useEffect(() => {
     AsyncStorage.getItem(CACHE_KEY)
@@ -29,10 +31,35 @@ export default function SearchScreen() {
       .catch(() => {});
   }, []);
 
-  async function runSearch(query) {
+  // Re-filters whatever is already in `store` — cheap, in-memory, no
+  // network — every time a filter field changes. Consistent with
+  // web/app.js, which re-runs its (also purely local) search on every
+  // filter change instead of requiring an explicit click.
+  const applyFilters = useCallback((data, q) => {
+    if (!q) return;
+    const startDateTime = q.start ? new Date(`${q.start}T00:00:00`) : new Date();
+    const endDateTime = new Date(`${q.end}T23:59:59`);
+    setResults(
+      filterEvents(data.events, {
+        startDateTime,
+        endDateTime,
+        location: q.location,
+        type: q.type,
+      })
+    );
+  }, []);
+
+  function handleFilterChange(nextQuery) {
+    setQuery(nextQuery);
+    applyFilters(store, nextQuery);
+  }
+
+  // The one action that actually touches the network — calls the 4
+  // on-device providers, which can take a while. Filtering itself never
+  // triggers this; only an explicit tap on "Atualizar dados" does.
+  async function handleRefresh() {
     setCollecting(true);
     setError('');
-    lastQuery.current = query;
     try {
       const collected = await collectEvents();
       setStore(collected);
@@ -45,18 +72,6 @@ export default function SearchScreen() {
     }
   }
 
-  function applyFilters(data, query) {
-    const startDateTime = query.start ? new Date(`${query.start}T00:00:00`) : new Date();
-    const endDateTime = new Date(`${query.end}T23:59:59`);
-    const filtered = filterEvents(data.events, {
-      startDateTime,
-      endDateTime,
-      location: query.location,
-      type: query.type,
-    });
-    setResults(filtered);
-  }
-
   const failedSources = store.sources.filter((s) => !s.ok);
 
   return (
@@ -67,7 +82,11 @@ export default function SearchScreen() {
         ListHeaderComponent={
           <View>
             <Text style={styles.heading}>Eventos culturais — Coimbra</Text>
-            <FilterForm onSearch={runSearch} searching={collecting} />
+            <FilterForm
+              onFilterChange={handleFilterChange}
+              onRefresh={handleRefresh}
+              refreshing={collecting}
+            />
 
             {collecting ? (
               <View style={styles.loading}>
@@ -98,9 +117,13 @@ export default function SearchScreen() {
               <Text style={styles.generatedAt}>
                 Dados de {new Date(store.generatedAt).toLocaleString('pt-PT')}
               </Text>
+            ) : !collecting ? (
+              <Text style={styles.generatedAt}>
+                Sem dados ainda — toca em "Atualizar dados" para começar.
+              </Text>
             ) : null}
 
-            {!collecting && lastQuery.current && results.length === 0 ? (
+            {!collecting && query && results.length === 0 && store.generatedAt ? (
               <Text style={styles.empty}>Nenhum evento encontrado para estes critérios.</Text>
             ) : null}
           </View>

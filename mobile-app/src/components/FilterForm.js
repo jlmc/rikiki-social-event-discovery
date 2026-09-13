@@ -7,24 +7,54 @@ import { LOCATIONS } from '../providers/viral-agenda';
 // packages. "YYYY-MM-DD" is validated the same way the CLI validates it.
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
-export default function FilterForm({ onSearch, searching }) {
+// onFilterChange fires immediately (cheap, in-memory re-filter of
+// whatever was already collected) whenever any field changes to a valid
+// combination — consistent with web/app.js, which re-runs its search on
+// every filter change instead of requiring an explicit click. onRefresh
+// is the one action that actually goes to the network (a fresh on-device
+// collection), so it stays an explicit button — auto-triggering that on
+// every keystroke would silently re-scrape all 4 sources over and over.
+export default function FilterForm({ onFilterChange, onRefresh, refreshing }) {
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [location, setLocation] = useState('');
   const [type, setType] = useState('');
   const [error, setError] = useState('');
 
-  function handleSubmit() {
-    if (!end || !DATE_REGEX.test(end)) {
-      setError('Indica uma data de fim válida (AAAA-MM-DD).');
+  function emitIfValid(next) {
+    const { end: nextEnd, start: nextStart } = next;
+    if (!nextEnd || !DATE_REGEX.test(nextEnd)) {
+      setError(nextEnd ? 'Indica uma data de fim válida (AAAA-MM-DD).' : '');
       return;
     }
-    if (start && !DATE_REGEX.test(start)) {
+    if (nextStart && !DATE_REGEX.test(nextStart)) {
       setError('Data de início inválida (AAAA-MM-DD).');
       return;
     }
     setError('');
-    onSearch({ start: start || null, end, location: location.trim(), type: type.trim() });
+    onFilterChange({
+      start: nextStart || null,
+      end: nextEnd,
+      location: next.location.trim(),
+      type: next.type.trim(),
+    });
+  }
+
+  function updateStart(value) {
+    setStart(value);
+    emitIfValid({ start: value, end, location, type });
+  }
+  function updateEnd(value) {
+    setEnd(value);
+    emitIfValid({ start, end: value, location, type });
+  }
+  function updateLocation(value) {
+    setLocation(value);
+    emitIfValid({ start, end, location: value, type });
+  }
+  function updateType(value) {
+    setType(value);
+    emitIfValid({ start, end, location, type: value });
   }
 
   return (
@@ -34,7 +64,7 @@ export default function FilterForm({ onSearch, searching }) {
         style={styles.input}
         placeholder="AAAA-MM-DD"
         value={end}
-        onChangeText={setEnd}
+        onChangeText={updateEnd}
         autoCapitalize="none"
       />
 
@@ -43,7 +73,7 @@ export default function FilterForm({ onSearch, searching }) {
         style={styles.input}
         placeholder="AAAA-MM-DD"
         value={start}
-        onChangeText={setStart}
+        onChangeText={updateStart}
         autoCapitalize="none"
       />
 
@@ -52,7 +82,7 @@ export default function FilterForm({ onSearch, searching }) {
         {LOCATIONS.map((loc) => (
           <Pressable
             key={loc.slug}
-            onPress={() => setLocation(location === loc.name ? '' : loc.name)}
+            onPress={() => updateLocation(location === loc.name ? '' : loc.name)}
             style={[styles.chip, location === loc.name && styles.chipActive]}
           >
             <Text style={[styles.chipText, location === loc.name && styles.chipTextActive]}>
@@ -67,18 +97,18 @@ export default function FilterForm({ onSearch, searching }) {
         style={styles.input}
         placeholder="teatro, concertos, infantil..."
         value={type}
-        onChangeText={setType}
+        onChangeText={updateType}
         autoCapitalize="none"
       />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <Pressable
-        style={[styles.button, searching && styles.buttonDisabled]}
-        onPress={handleSubmit}
-        disabled={searching}
+        style={[styles.button, refreshing && styles.buttonDisabled]}
+        onPress={onRefresh}
+        disabled={refreshing}
       >
-        <Text style={styles.buttonText}>{searching ? 'A recolher...' : 'Pesquisar'}</Text>
+        <Text style={styles.buttonText}>{refreshing ? 'A recolher...' : 'Atualizar dados'}</Text>
       </Pressable>
     </View>
   );
