@@ -26,7 +26,7 @@ chmod +x list-events.sh   # usually already executable
 ## Usage
 
 ```bash
-./list-events.sh -end <YYYY-MM-DD> [-start <YYYY-MM-DD>] [-location <text>] [-type <text>]
+./list-events.sh -end <YYYY-MM-DD> [-start <YYYY-MM-DD>] [-location <text>] [-type <text>] [-format <text|json>]
 ./list-events.sh -location help
 ```
 
@@ -44,6 +44,13 @@ chmod +x list-events.sh   # usually already executable
   event's category. This matches each source's own (Portuguese) category
   text (e.g. "teatro", "concertos", "infantil") — not a fixed, translated
   list of types (see [Categories](#categories)).
+- **`-format <text|json>`** (optional, defaults to `text`): output format
+  for the results. `json` prints `{ query, sources, results }` as JSON on
+  stdout instead of the human-readable listing — useful for piping into
+  another tool (`jq`, a script, etc.). Source-failure warnings are always
+  printed to **stderr** (see [Architecture](#architecture-two-step-pipeline)),
+  regardless of `-format`, so stdout in `json` mode is always valid,
+  parseable JSON.
 
 ### Examples
 
@@ -54,6 +61,8 @@ chmod +x list-events.sh   # usually already executable
 ./list-events.sh -end 2026-12-31 -type teatro
 ./list-events.sh -end 2026-12-31 -type infantil
 ./list-events.sh -end 2026-12-31 -start 2026-10-01 -location aveiro -type concertos
+./list-events.sh -end 2026-12-31 -format json
+./list-events.sh -end 2026-12-31 -location coimbra -format json | jq '.results | length'
 ./list-events.sh -location help
 ```
 
@@ -233,6 +242,7 @@ data. The substring filter still works as expected (`teatro` matches
 | `-end`/`-start` in a format other than `YYYY-MM-DD` | `-end "..." is not in YYYY-MM-DD format.` | 1 |
 | Valid format but not a real calendar date (e.g. `2026-02-30`) | `"..." is not a valid calendar date` | 1 |
 | `-end` before `-start` | `-end (...) must be on or after -start (...)` | 1 |
+| `-format` other than `text`/`json` | `invalid -format "..." (expected one of: text, json)` | 1 |
 | Unknown parameter | `unknown parameter "..."` + usage | 1 |
 | Docker not installed / not on `PATH` | `Docker is not installed or not on the PATH.` | 1 |
 | Docker installed but the daemon isn't responding | `the Docker daemon is not responding.` | 1 |
@@ -247,7 +257,11 @@ data. The substring filter still works as expected (`teatro` matches
 - **[`collect-events.js`](collect-events.js)** — step 1: calls the
   providers, aggregates, deduplicates and writes `events.json`.
 - **[`list-events.js`](list-events.js)** — step 2: reads `events.json`,
-  filters and prints the results (and any source-failure warnings).
+  filters and prints the results (and any source-failure warnings), as
+  text or as JSON depending on `-format`.
+- **[`lib/filter-events.js`](lib/filter-events.js)** — the date/location/type
+  filtering rule used by `list-events.js`, shared out so it has a single
+  source of truth.
 - **[`providers/`](providers/)** — one file per data source; each exports
   `{ name, url, getEvents() }` (or, for ViralAgenda, a function returning a
   list of these, one per location).

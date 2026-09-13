@@ -17,17 +17,21 @@
 #      (cheerio).
 # Argument and Docker environment validation happens here, in Bash.
 #
-# Usage: ./list-events.sh -end <YYYY-MM-DD> [-start <YYYY-MM-DD>] [-location <text>] [-type <text>]
+# Usage: ./list-events.sh -end <YYYY-MM-DD> [-start <YYYY-MM-DD>] [-location <text>] [-type <text>] [-format <text|json>]
 #        ./list-events.sh -location help
 #
 # -type matches each source's own category text, which is in Portuguese
 # (e.g. "teatro", "concertos", "infantil") since these are Portuguese sites
 # — not a fixed, translated list of types.
 #
+# -format defaults to "text"; "json" prints the filtered results as JSON on
+# stdout instead (source-failure warnings still go to stderr either way).
+#
 # Examples:
 #   ./list-events.sh -end 2026-12-31
 #   ./list-events.sh -end 2026-12-31 -location coimbra
 #   ./list-events.sh -end 2026-12-31 -start 2026-10-01 -type teatro
+#   ./list-events.sh -end 2026-12-31 -format json
 #   ./list-events.sh -location help
 # ==============================================================================
 
@@ -44,17 +48,20 @@ START=""
 END=""
 LOCATION=""
 TYPE=""
+FORMAT=""
 
 usage() {
-  echo "Usage: $0 -end <YYYY-MM-DD> [-start <YYYY-MM-DD>] [-location <text>] [-type <text>]"
+  echo "Usage: $0 -end <YYYY-MM-DD> [-start <YYYY-MM-DD>] [-location <text>] [-type <text>] [-format <text|json>]"
   echo "       $0 -location help"
   echo
   echo "-type matches each source's own (Portuguese) category text, e.g. \"teatro\", \"concertos\"."
+  echo "-format defaults to \"text\"; \"json\" prints the filtered results as JSON on stdout."
   echo
   echo "Examples:"
   echo "  $0 -end 2026-12-31"
   echo "  $0 -end 2026-12-31 -location coimbra"
   echo "  $0 -end 2026-12-31 -start 2026-10-01 -type teatro"
+  echo "  $0 -end 2026-12-31 -format json"
   echo "  $0 -location help"
 }
 
@@ -75,6 +82,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     -type)
       TYPE="${2:-}"; [[ $# -ge 2 ]] || { echo "Error: -type needs a value." >&2; usage; exit 1; }
+      shift 2
+      ;;
+    -format)
+      FORMAT="${2:-}"; [[ $# -ge 2 ]] || { echo "Error: -format needs a value." >&2; usage; exit 1; }
       shift 2
       ;;
     -h|-help|--help)
@@ -154,6 +165,7 @@ ARGS=(-end "$END")
 [[ -n "$START" ]] && ARGS+=(-start "$START")
 [[ -n "$LOCATION" ]] && ARGS+=(-location "$LOCATION")
 [[ -n "$TYPE" ]] && ARGS+=(-type "$TYPE")
+[[ -n "$FORMAT" ]] && ARGS+=(-format "$FORMAT")
 
 docker run --rm --network none \
   -v "$DIR":/app -w /app \

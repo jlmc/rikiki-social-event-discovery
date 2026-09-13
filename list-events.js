@@ -10,16 +10,18 @@
  * file already mounted on the volume.
  *
  * Usage:
- *   node list-events.js -end <date> [-start <date>] [-location <text>] [-type <text>]
+ *   node list-events.js -end <date> [-start <date>] [-location <text>] [-type <text>] [-format <text|json>]
  *   node list-events.js -location help
  */
 
 const fs = require('fs');
 const path = require('path');
 const { LOCATIONS } = require('./providers/viral-agenda');
+const { filterEvents } = require('./lib/filter-events');
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const EVENTS_FILE = path.join(__dirname, 'events.json');
+const VALID_FORMATS = ['text', 'json'];
 
 function fail(message) {
   console.error(`Error: ${message}`);
@@ -27,14 +29,21 @@ function fail(message) {
 }
 
 function printUsage() {
-  console.log('Usage: list-events.js -end <YYYY-MM-DD> [-start <YYYY-MM-DD>] [-location <text>] [-type <text>]');
+  console.log('Usage: list-events.js -end <YYYY-MM-DD> [-start <YYYY-MM-DD>] [-location <text>] [-type <text>] [-format <text|json>]');
   console.log('       list-events.js -location help');
   console.log('-type matches each source\'s own (Portuguese) category text, e.g. "teatro", "concertos".');
+  console.log('-format defaults to "text"; "json" prints the filtered results as JSON on stdout (warnings still go to stderr).');
 }
 
 function parseArgs(argv) {
-  const args = { start: null, end: null, location: null, type: null };
-  const knownFlags = { '-start': 'start', '-end': 'end', '-location': 'location', '-type': 'type' };
+  const args = { start: null, end: null, location: null, type: null, format: 'text' };
+  const knownFlags = {
+    '-start': 'start',
+    '-end': 'end',
+    '-location': 'location',
+    '-type': 'type',
+    '-format': 'format',
+  };
 
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
@@ -77,6 +86,11 @@ if (args.start && !DATE_REGEX.test(args.start)) {
   fail(`invalid -start date: "${args.start}" (expected format: YYYY-MM-DD)`);
 }
 
+if (!VALID_FORMATS.includes(args.format)) {
+  printUsage();
+  fail(`invalid -format "${args.format}" (expected one of: ${VALID_FORMATS.join(', ')})`);
+}
+
 const now = new Date();
 const startDateTime = args.start ? new Date(`${args.start}T00:00:00`) : now;
 const endDateTime = new Date(`${args.end}T23:59:59`);
@@ -102,29 +116,12 @@ try {
   fail(`events.json is not valid JSON: ${error.message}`);
 }
 
-const locationFilter = (args.location || '').trim().toLowerCase();
-const typeFilter = (args.type || '').trim().toLowerCase();
-
-function withinDateRange(event) {
-  const eventDate = new Date(event.dateTime);
-  return eventDate >= startDateTime && eventDate <= endDateTime;
-}
-
-function matchesLocation(event) {
-  if (!locationFilter) return true;
-  return (event.location || '').toLowerCase().includes(locationFilter);
-}
-
-function matchesType(event) {
-  if (!typeFilter) return true;
-  return (event.category || '').toLowerCase().includes(typeFilter);
-}
-
-const results = (data.events || [])
-  .filter(withinDateRange)
-  .filter(matchesLocation)
-  .filter(matchesType)
-  .sort((a, b) => new Date(a.dateTime) - new Date(b.dateTime));
+const results = filterEvents(data.events, {
+  startDateTime,
+  endDateTime,
+  location: args.location,
+  type: args.type,
+});
 
 // ---------------------------------------------------------------------------
 // Warnings: a broken source should never go unnoticed.
@@ -144,6 +141,29 @@ if (failedSources.length > 0) {
 // ---------------------------------------------------------------------------
 // Output
 // ---------------------------------------------------------------------------
+if (args.format === 'json') {
+  console.log(
+    JSON.stringify(
+      {
+        query: {
+          start: args.start || null,
+          end: args.end,
+          location: args.location || null,
+          type: args.type || null,
+        },
+        sources: data.sources || [],
+        results,
+      },
+      null,
+      2
+    )
+  );
+  process.exit(0);
+}
+
+const locationFilter = (args.location || '').trim().toLowerCase();
+const typeFilter = (args.type || '').trim().toLowerCase();
+
 const dateFormatter = new Intl.DateTimeFormat('en-GB', {
   weekday: 'short',
   day: '2-digit',
