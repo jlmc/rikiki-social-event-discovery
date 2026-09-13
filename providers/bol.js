@@ -1,46 +1,50 @@
 'use strict';
 
 /**
- * Fonte: bol.pt (Bilheteira Online). A homepage vem pré-carregada com
- * dezenas de blocos <script type="application/ld+json"> no formato
- * schema.org/Event (o mesmo que a Google usa para SEO de eventos) — dados
- * estruturados por definição, sem precisar de parsing de HTML solto.
+ * Source: bol.pt (Bilheteira Online). The homepage ships preloaded with
+ * dozens of <script type="application/ld+json"> blocks in the
+ * schema.org/Event format (the same one Google uses for event SEO) —
+ * structured data by design, no loose HTML parsing needed.
  *
- * A pesquisa avançada do próprio BOL (filtro por distrito/sala) é uma app
- * carregada via JavaScript, por isso não é fiável para scraping simples.
- * Em vez disso, usamos sempre a homepage (que já traz uma boa amostra de
- * eventos reais nacionais) e filtramos localmente pelos distritos que nos
- * interessam.
+ * BOL's own advanced search (filter by district/venue) is a JavaScript-
+ * rendered app, so it's not reliable for plain scraping. Instead, we
+ * always use the homepage (which already carries a good sample of real
+ * nationwide events) and filter locally to the districts we care about.
  *
- * Limitações conhecidas (documentadas no README):
- * - "addressLocality" no JSON-LD do BOL é o DISTRITO, não o concelho exato
- *   (ex.: eventos em Águeda ou Santa Maria da Feira aparecem como "Aveiro").
- * - O JSON-LD não inclui categoria/género do evento.
+ * Known limitations (documented in the README):
+ * - The "addressLocality" field in BOL's JSON-LD is the DISTRICT, not the
+ *   exact municipality (e.g. events in Águeda or Santa Maria da Feira show
+ *   up as "Aveiro").
+ * - The JSON-LD doesn't include the event's category/genre.
+ * - BOL's "performers" field is not the artists — it's almost always
+ *   "com produção de <company>" ("produced by <company>", the production
+ *   company). Using it as "participants" would be misleading, so this
+ *   provider leaves it out; BOL has no reliable description or cast info.
  */
 
-const NOME = 'bol.pt';
-const PAGINA_URL = 'https://www.bol.pt/';
+const NAME = 'bol.pt';
+const PAGE_URL = 'https://www.bol.pt/';
 
-// Distritos que cobrem os concelhos pedidos: Coimbra (Coimbra, Figueira da
-// Foz, Soure, Condeixa-a-Nova), Leiria (Pombal) e Aveiro (Aveiro).
-const DISTRITOS_ALVO = new Set(['Coimbra', 'Aveiro', 'Leiria']);
+// Districts covering the requested locations: Coimbra (Coimbra, Figueira
+// da Foz, Soure, Condeixa-a-Nova), Leiria (Pombal) and Aveiro (Aveiro).
+const TARGET_DISTRICTS = new Set(['Coimbra', 'Aveiro', 'Leiria']);
 
-function extrairBlocosJsonLd(html) {
-  const blocos = [];
+function extractJsonLdBlocks(html) {
+  const blocks = [];
   const regex = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/g;
   let match;
   while ((match = regex.exec(html)) !== null) {
     try {
-      blocos.push(JSON.parse(match[1].trim()));
+      blocks.push(JSON.parse(match[1].trim()));
     } catch {
-      // Bloco malformado ou não-JSON — ignora-se, não interrompe a recolha.
+      // Malformed or non-JSON block — skip it, don't abort the whole fetch.
     }
   }
-  return blocos;
+  return blocks;
 }
 
-async function obterEventos() {
-  const resposta = await fetch(PAGINA_URL, {
+async function getEvents() {
+  const response = await fetch(PAGE_URL, {
     headers: {
       'User-Agent':
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36',
@@ -48,39 +52,39 @@ async function obterEventos() {
     signal: AbortSignal.timeout(15000),
   });
 
-  if (!resposta.ok) {
-    throw new Error(`HTTP ${resposta.status} ao aceder a ${PAGINA_URL}`);
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} fetching ${PAGE_URL}`);
   }
 
-  const html = await resposta.text();
-  const blocos = extrairBlocosJsonLd(html);
-  const eventos = [];
+  const html = await response.text();
+  const blocks = extractJsonLdBlocks(html);
+  const events = [];
 
-  for (const bloco of blocos) {
-    if (bloco['@type'] !== 'Event') continue;
+  for (const block of blocks) {
+    if (block['@type'] !== 'Event') continue;
 
-    const distrito = bloco.location?.address?.addressLocality;
-    if (!distrito || !DISTRITOS_ALVO.has(distrito)) continue;
+    const district = block.location?.address?.addressLocality;
+    if (!district || !TARGET_DISTRICTS.has(district)) continue;
 
-    const titulo = (bloco.name || '').trim();
-    const dataHora = bloco.startDate;
-    if (!titulo || !dataHora) continue;
+    const title = (block.name || '').trim();
+    const dateTime = block.startDate;
+    if (!title || !dateTime) continue;
 
-    const data = new Date(dataHora);
-    if (Number.isNaN(data.getTime())) continue;
+    const date = new Date(dateTime);
+    if (Number.isNaN(date.getTime())) continue;
 
-    eventos.push({
-      titulo,
-      categoria: 'Sem categoria',
-      concelho: distrito,
-      local: bloco.location?.name || distrito,
-      dataHora: data.toISOString(),
-      fonte: NOME,
-      url: bloco.offers?.url || bloco.url || PAGINA_URL,
+    events.push({
+      title,
+      category: 'Uncategorized',
+      location: district,
+      venue: block.location?.name || district,
+      dateTime: date.toISOString(),
+      source: NAME,
+      url: block.offers?.url || block.url || PAGE_URL,
     });
   }
 
-  return eventos;
+  return events;
 }
 
-module.exports = { nome: NOME, url: PAGINA_URL, obterEventos };
+module.exports = { name: NAME, url: PAGE_URL, getEvents };

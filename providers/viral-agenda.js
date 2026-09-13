@@ -1,92 +1,120 @@
 'use strict';
 
 /**
- * Fonte: viralagenda.com — agregador nacional de agenda cultural. As
- * páginas por concelho (/pt/<distrito>/<concelho>) são renderizadas no
- * servidor e cada evento (<li class="viral-event">) já traz metadados
- * estruturados em atributos data-* (data-date-start em ISO 8601), o que
- * torna o scraping bastante mais robusto do que depender de texto livre.
+ * Source: viralagenda.com — nationwide cultural agenda aggregator. The
+ * per-location pages (/pt/<district>/<location>) are server-rendered and
+ * each event (<li class="viral-event">) already carries structured
+ * metadata in data-* attributes (data-date-start in ISO 8601), which makes
+ * scraping considerably more robust than relying on loose text.
+ *
+ * After building each listing, events are enriched with description and
+ * participants by fetching each one's own detail page, where the full text
+ * lives in a <pre> inside ".viral-event-description" — in some cases
+ * (e.g. cinema listings) it even includes a "Com <actors>" ("With
+ * <actors>") line.
  */
 
 const cheerio = require('cheerio');
+const { mapWithLimit, cleanHtmlToText, splitDescriptionAndParticipants } = require('./_utils');
 
 const BASE_URL = 'https://www.viralagenda.com';
+const USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';
 
-// Confirmados manualmente durante a investigação (URLs que devolvem
-// listagens reais, não 404). Os slugs nem sempre seguem o mesmo padrão —
-// "condeixaanova" não tem hífens, ao contrário de "figueira-da-foz" — por
-// isso foram confirmados um a um em vez de gerados a partir do nome.
-const LOCAIS = [
-  { distrito: 'coimbra', concelho: 'coimbra', nomeConcelho: 'Coimbra' },
-  { distrito: 'coimbra', concelho: 'figueira-da-foz', nomeConcelho: 'Figueira da Foz' },
-  { distrito: 'coimbra', concelho: 'soure', nomeConcelho: 'Soure' },
-  { distrito: 'coimbra', concelho: 'condeixaanova', nomeConcelho: 'Condeixa-a-Nova' },
-  { distrito: 'leiria', concelho: 'pombal', nomeConcelho: 'Pombal' },
-  { distrito: 'aveiro', concelho: 'aveiro', nomeConcelho: 'Aveiro' },
+// Confirmed manually during investigation (URLs that return real listings,
+// not a 404). Slugs don't always follow the same pattern —
+// "condeixaanova" has no hyphens, unlike "figueira-da-foz" — so they were
+// confirmed one by one instead of generated from the name.
+const LOCATIONS = [
+  { district: 'coimbra', slug: 'coimbra', name: 'Coimbra' },
+  { district: 'coimbra', slug: 'figueira-da-foz', name: 'Figueira da Foz' },
+  { district: 'coimbra', slug: 'soure', name: 'Soure' },
+  { district: 'coimbra', slug: 'condeixaanova', name: 'Condeixa-a-Nova' },
+  { district: 'leiria', slug: 'pombal', name: 'Pombal' },
+  { district: 'aveiro', slug: 'aveiro', name: 'Aveiro' },
 ];
 
-async function obterEventosDeConcelho({ distrito, concelho, nomeConcelho }) {
-  const url = `${BASE_URL}/pt/${distrito}/${concelho}`;
-  const resposta = await fetch(url, {
-    headers: {
-      'User-Agent':
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36',
-    },
+async function enrichEvent(event) {
+  try {
+    const response = await fetch(event.url, {
+      headers: { 'User-Agent': USER_AGENT },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!response.ok) return event;
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+    const descriptionHtml = $('.viral-event-description pre').first().html();
+    if (!descriptionHtml) return event;
+
+    const { description, participants } = splitDescriptionAndParticipants(
+      cleanHtmlToText(descriptionHtml)
+    );
+    return { ...event, description, participants };
+  } catch {
+    return event;
+  }
+}
+
+async function getEventsForLocation({ district, slug, name }) {
+  const url = `${BASE_URL}/pt/${district}/${slug}`;
+  const response = await fetch(url, {
+    headers: { 'User-Agent': USER_AGENT },
     signal: AbortSignal.timeout(15000),
   });
 
-  if (!resposta.ok) {
-    throw new Error(`HTTP ${resposta.status} ao aceder a ${url}`);
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} fetching ${url}`);
   }
 
-  const html = await resposta.text();
+  const html = await response.text();
   const $ = cheerio.load(html);
-  const eventos = [];
+  const events = [];
 
-  $('li.viral-event').each((_, elemento) => {
-    const $cartao = $(elemento);
+  $('li.viral-event').each((_, element) => {
+    const $card = $(element);
 
-    const titulo = $cartao.find('.viral-event-title').first().text().trim();
-    const dataInicio = $cartao.attr('data-date-start');
-    if (!titulo || !dataInicio) return;
+    const title = $card.find('.viral-event-title').first().text().trim();
+    const startDate = $card.attr('data-date-start');
+    if (!title || !startDate) return;
 
-    const data = new Date(dataInicio);
-    if (Number.isNaN(data.getTime())) return;
+    const date = new Date(startDate);
+    if (Number.isNaN(date.getTime())) return;
 
-    const local = $cartao.find('a.viral-event-place span').first().text().trim();
+    const venue = $card.find('a.viral-event-place span').first().text().trim();
 
-    const categoria =
-      $cartao
+    const category =
+      $card
         .find('.viral-event-box-cat a')
         .map((_, el) => $(el).text().trim())
         .get()
         .filter(Boolean)
-        .join(' / ') || 'Sem categoria';
+        .join(' / ') || 'Uncategorized';
 
-    const caminho = $cartao.attr('data-url');
+    const path = $card.attr('data-url');
 
-    eventos.push({
-      titulo,
-      categoria,
-      concelho: nomeConcelho,
-      local: local || nomeConcelho,
-      dataHora: data.toISOString(),
-      fonte: `viralagenda.com (${nomeConcelho})`,
-      url: caminho ? new URL(caminho, BASE_URL).toString() : `${BASE_URL}/pt/${distrito}/${concelho}`,
+    events.push({
+      title,
+      category,
+      location: name,
+      venue: venue || name,
+      dateTime: date.toISOString(),
+      source: `viralagenda.com (${name})`,
+      url: path ? new URL(path, BASE_URL).toString() : `${BASE_URL}/pt/${district}/${slug}`,
     });
   });
 
-  return eventos;
+  return mapWithLimit(events, 4, enrichEvent);
 }
 
-// Cada concelho é tratado como uma "fonte" independente: se o pedido a um
-// concelho falhar, os restantes continuam a ser processados normalmente.
-async function obterFontes() {
-  return LOCAIS.map((localAlvo) => ({
-    nome: `viralagenda.com (${localAlvo.nomeConcelho})`,
-    url: `${BASE_URL}/pt/${localAlvo.distrito}/${localAlvo.concelho}`,
-    obterEventos: () => obterEventosDeConcelho(localAlvo),
+// Each location is treated as an independent "source": if the request for
+// one location fails, the others keep being processed normally.
+async function getSources() {
+  return LOCATIONS.map((target) => ({
+    name: `viralagenda.com (${target.name})`,
+    url: `${BASE_URL}/pt/${target.district}/${target.slug}`,
+    getEvents: () => getEventsForLocation(target),
   }));
 }
 
-module.exports = { obterFontes };
+module.exports = { getSources, LOCATIONS };

@@ -1,122 +1,157 @@
 'use strict';
 
 /**
- * Fonte: agenda.coimbra.pt — plataforma oficial da Câmara Municipal de
- * Coimbra + Universidade de Coimbra. A página inicial é renderizada no
- * servidor (SSR), por isso um simples fetch() já traz o HTML com os
- * cartões de evento, sem precisar de executar JavaScript no browser.
+ * Source: agenda.coimbra.pt — official platform of the Coimbra City
+ * Council + University of Coimbra. The homepage is server-rendered (SSR),
+ * so a plain fetch() already returns the HTML with the event cards, no
+ * need to run JavaScript in a browser.
  *
- * O HTML usa classes utilitárias (Tailwind) sem nomes semânticos, por isso
- * a extração de datas assenta na ESTRUTURA (1º bloco filho = data/hora de
- * início, 2º = data/hora de fim) em vez de tentar interpretar o texto do
- * separador entre elas, que varia ("-" ou "a" consoante o intervalo).
+ * The HTML uses utility classes (Tailwind) with no semantic names, so date
+ * extraction relies on STRUCTURE (1st child block = start date/time, 2nd =
+ * end date/time) instead of trying to interpret the separator text between
+ * them, which varies ("-" or "a" depending on the range).
+ *
+ * After building the listing, each event is enriched with description and
+ * participants by fetching its own detail page (one extra HTTP request per
+ * event, with a concurrency limit — see enrichEvent).
  */
 
 const cheerio = require('cheerio');
+const { mapWithLimit, cleanHtmlToText, splitDescriptionAndParticipants } = require('./_utils');
 
-const NOME = 'agenda.coimbra.pt';
-const PAGINA_URL = 'https://agenda.coimbra.pt/';
-const CONCELHO = 'Coimbra';
+const NAME = 'agenda.coimbra.pt';
+const PAGE_URL = 'https://agenda.coimbra.pt/';
+const LOCATION = 'Coimbra';
 
-const MESES = {
+// Portuguese month abbreviations, as published by the source — must stay
+// in Portuguese, this is a data-matching table, not UI text.
+const MONTHS = {
   jan: 0, fev: 1, mar: 2, abr: 3, mai: 4, jun: 5,
   jul: 6, ago: 7, set: 8, out: 9, nov: 10, dez: 11,
 };
 
-function limparTexto(texto) {
-  return texto.replace(/\s+/g, ' ').trim();
+function cleanText(text) {
+  return text.replace(/\s+/g, ' ').trim();
 }
 
-// Alguns cartões mostram a morada completa em várias linhas; só nos
-// interessa a 1ª linha (o nome do local), antes de colapsar espaços.
-function primeiraLinhaLimpa(texto) {
-  const primeiraLinha = texto.split(/\r?\n/).map((l) => l.trim()).find(Boolean) || '';
-  return limparTexto(primeiraLinha);
+// Some cards show the full address across several lines; we only want the
+// 1st line (the venue name), before collapsing whitespace.
+function firstCleanLine(text) {
+  const firstLine = text.split(/\r?\n/).map((l) => l.trim()).find(Boolean) || '';
+  return cleanText(firstLine);
 }
 
-function inferirAno(dia, mesIndex, anoExplicito, agora) {
-  if (anoExplicito) return anoExplicito;
-  const candidata = new Date(agora.getFullYear(), mesIndex, dia);
-  const diffDias = (agora - candidata) / (1000 * 60 * 60 * 24);
-  // Datas "no passado" há mais de ~2 meses são provavelmente do ano seguinte
-  // (agendas mostram sempre o dia/mês, raramente o ano, quando é o ano corrente).
-  return diffDias > 60 ? agora.getFullYear() + 1 : agora.getFullYear();
+function inferYear(day, monthIndex, explicitYear, now) {
+  if (explicitYear) return explicitYear;
+  const candidate = new Date(now.getFullYear(), monthIndex, day);
+  const diffDays = (now - candidate) / (1000 * 60 * 60 * 24);
+  // Dates "in the past" by more than ~2 months are probably next year
+  // (agendas only ever show day/month, rarely the year, when it's the
+  // current year).
+  return diffDays > 60 ? now.getFullYear() + 1 : now.getFullYear();
 }
 
-function extrairDataHoraInicio(textoBloco, agora) {
-  const matchData = textoBloco.match(
+function extractStartDateTime(blockText, now) {
+  const dateMatch = blockText.match(
     /(\d{1,2})\s+(Jan|Fev|Mar|Abr|Mai|Jun|Jul|Ago|Set|Out|Nov|Dez)\w*\s*(\d{4})?/i
   );
-  if (!matchData) return null;
+  if (!dateMatch) return null;
 
-  const dia = Number(matchData[1]);
-  const mesIndex = MESES[matchData[2].toLowerCase()];
-  const ano = inferirAno(dia, mesIndex, matchData[3] ? Number(matchData[3]) : null, agora);
+  const day = Number(dateMatch[1]);
+  const monthIndex = MONTHS[dateMatch[2].toLowerCase()];
+  const year = inferYear(day, monthIndex, dateMatch[3] ? Number(dateMatch[3]) : null, now);
 
-  const matchHora = textoBloco.match(/(\d{1,2}):(\d{2})/);
-  const hora = matchHora ? Number(matchHora[1]) : 0;
-  const minuto = matchHora ? Number(matchHora[2]) : 0;
+  const timeMatch = blockText.match(/(\d{1,2}):(\d{2})/);
+  const hour = timeMatch ? Number(timeMatch[1]) : 0;
+  const minute = timeMatch ? Number(timeMatch[2]) : 0;
 
-  const data = new Date(ano, mesIndex, dia, hora, minuto);
-  return Number.isNaN(data.getTime()) ? null : data;
+  const date = new Date(year, monthIndex, day, hour, minute);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
-async function obterEventos() {
-  const resposta = await fetch(PAGINA_URL, {
-    headers: {
-      'User-Agent':
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36',
-    },
+const USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';
+
+// The main listing doesn't show description or participants — only each
+// event's own detail page has them, embedded in <meta name="description">
+// (with HTML inside the attribute value itself). Failing to fetch ONE
+// event's detail page shouldn't take down the rest: it's just left without
+// description/participants.
+async function enrichEvent(event) {
+  try {
+    const response = await fetch(event.url, {
+      headers: { 'User-Agent': USER_AGENT },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!response.ok) return event;
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+    const metaDescription = $('meta[name="description"]').attr('content');
+    if (!metaDescription) return event;
+
+    const { description, participants } = splitDescriptionAndParticipants(
+      cleanHtmlToText(metaDescription)
+    );
+    return { ...event, description, participants };
+  } catch {
+    return event;
+  }
+}
+
+async function getEvents() {
+  const response = await fetch(PAGE_URL, {
+    headers: { 'User-Agent': USER_AGENT },
     signal: AbortSignal.timeout(15000),
   });
 
-  if (!resposta.ok) {
-    throw new Error(`HTTP ${resposta.status} ao aceder a ${PAGINA_URL}`);
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} fetching ${PAGE_URL}`);
   }
 
-  const html = await resposta.text();
+  const html = await response.text();
   const $ = cheerio.load(html);
-  const agora = new Date();
-  const eventos = [];
+  const now = new Date();
+  const events = [];
 
-  $('a[href^="/event/"]').each((_, elemento) => {
-    const $cartao = $(elemento);
+  $('a[href^="/event/"]').each((_, element) => {
+    const $card = $(element);
 
-    const titulo = limparTexto($cartao.find('.condensed-text.font-semibold').first().text());
-    if (!titulo) return;
+    const title = cleanText($card.find('.condensed-text.font-semibold').first().text());
+    if (!title) return;
 
-    const local = primeiraLinhaLimpa(
-      $cartao.find('.line-clamp-1.text-ellipsis.flex-1.text-xs').first().text()
+    const venue = firstCleanLine(
+      $card.find('.line-clamp-1.text-ellipsis.flex-1.text-xs').first().text()
     );
 
-    const categoria = $cartao
+    const category = $card
       .find('.semicondensed-text.uppercase')
       .map((_, el) => $(el).text().trim())
       .get()
       .filter(Boolean)
-      .join(' / ') || 'Sem categoria';
+      .join(' / ') || 'Uncategorized';
 
-    // Estrutura: div.text-lg.border-l-2 > [bloco início][separador][bloco fim]
-    const blocoData = $cartao.find('.text-lg.border-l-2').first();
-    const primeiroBloco = blocoData.children('div').first();
-    const textoInicio = (primeiroBloco.length ? primeiroBloco : blocoData).text().trim();
-    const dataHoraInicio = extrairDataHoraInicio(textoInicio, agora);
-    if (!dataHoraInicio) return;
+    // Structure: div.text-lg.border-l-2 > [start block][separator][end block]
+    const dateBlock = $card.find('.text-lg.border-l-2').first();
+    const firstBlock = dateBlock.children('div').first();
+    const startText = (firstBlock.length ? firstBlock : dateBlock).text().trim();
+    const startDateTime = extractStartDateTime(startText, now);
+    if (!startDateTime) return;
 
-    const href = $cartao.attr('href');
+    const href = $card.attr('href');
 
-    eventos.push({
-      titulo,
-      categoria,
-      concelho: CONCELHO,
-      local: local || 'Coimbra',
-      dataHora: dataHoraInicio.toISOString(),
-      fonte: NOME,
-      url: href ? new URL(href, PAGINA_URL).toString() : PAGINA_URL,
+    events.push({
+      title,
+      category,
+      location: LOCATION,
+      venue: venue || 'Coimbra',
+      dateTime: startDateTime.toISOString(),
+      source: NAME,
+      url: href ? new URL(href, PAGE_URL).toString() : PAGE_URL,
     });
   });
 
-  return eventos;
+  return mapWithLimit(events, 4, enrichEvent);
 }
 
-module.exports = { nome: NOME, url: PAGINA_URL, obterEventos };
+module.exports = { name: NAME, url: PAGE_URL, getEvents };

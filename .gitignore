@@ -1,6 +1,6 @@
-# Node.js / dados gerados
+# Node.js / generated data
 node_modules/
-eventos.json
+events.json
 
 # JetBrains IDEs (IntelliJ IDEA, WebStorm, etc.)
 .idea/
