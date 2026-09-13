@@ -6,6 +6,10 @@ independent modules, all sharing the same real data sources and the same filteri
 (location, type, date range) — independent front-ends over the same idea, not separate
 products:
 
+**🔗 Live site: [jlmc.github.io/rikiki-social-event-discovery](https://jlmc.github.io/rikiki-social-event-discovery/)**
+(the `web/` module below — note the URL has no `/web/` path segment: GitHub Actions deploys
+that folder's *contents* to the site root, not to a `web/` subpath).
+
 - **[`cli/`](cli/README.md)** — a Docker-based command-line tool. Runs entirely inside
   `node:24-alpine` containers (no local Node.js install needed); a network-enabled step
   scrapes the real sources into `events.json`, and a `--network none` step filters/prints the
