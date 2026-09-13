@@ -72,12 +72,30 @@ body {
 .field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 160px; min-width: 140px; }
 .field label { font-size: 12px; font-weight: 600; color: var(--muted); }
 .field input, .field select {
-  padding: 10px 12px;
+  height: 44px;
+  box-sizing: border-box;
+  padding: 0 12px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--card-bg);
   color: var(--text);
   font-size: 14px;
+}
+/* Safari renders <select> with its own native chrome, shorter than
+   <input type="date"> even with identical padding/font-size — force a
+   consistent box and draw a plain CSS arrow in place of the native one. */
+.field select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 30px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(50% - 3px),
+    calc(100% - 13px) calc(50% - 3px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
 }
 .search-button {
   min-height: 44px;
