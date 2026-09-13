@@ -51,12 +51,20 @@ double-click on `index.html` won't load `app.js`'s import correctly.)
 
 ## Publishing (one-time setup)
 
-The workflow deploys automatically once GitHub Pages is configured to build from Actions:
+The workflow deploys automatically once GitHub Pages is configured to build from Actions.
+Either click through it on GitHub (**Settings → Pages → Build and deployment → Source: GitHub
+Actions**), or run the helper script (Docker + `gh` CLI, no local install needed — see
+[`../scripts/README.md`](../scripts/README.md)):
 
-1. On GitHub, go to the repository's **Settings → Pages**.
-2. Under **Build and deployment → Source**, choose **GitHub Actions**.
+```bash
+GH_TOKEN=<your-github-token> ../scripts/configure-github-pages.sh
+```
 
-After that, [`publish-web.yml`](../.github/workflows/publish-web.yml) runs on a 6-hour
-schedule, on every push to `master` that touches `web/`, `cli/collect-events.js` or
-`cli/providers/`, and on-demand from the Actions tab (**Run workflow**) — each run re-scrapes
-the real sources and republishes the site with fresh data.
+This sets the same setting via the API and immediately triggers
+[`publish-web.yml`](../.github/workflows/publish-web.yml), so the site has real data right
+away instead of waiting for the first 6-hour scheduled run.
+
+After that first run, the workflow keeps itself going: every 6 hours, on every push to
+`master` that touches `web/`, `cli/collect-events.js` or `cli/providers/`, and on-demand from
+the Actions tab (**Run workflow**) — each run re-scrapes the real sources and republishes the
+site with fresh data.

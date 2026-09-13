@@ -21,4 +21,5 @@ products:
   4 sources directly (same CORS restriction as above), the scraping runs periodically in
   GitHub Actions instead (reusing `cli/collect-events.js` unchanged), publishing a fresh
   `events.json` next to the static page every few hours — the browser only ever reads that
-  one same-origin file.
+  one same-origin file. One-time setup and on-demand data refresh for this module are handled
+  by [`scripts/`](scripts/README.md), not manually.
