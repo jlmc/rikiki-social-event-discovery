@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "Rikiki Eventos",
+    "slug": "rikiki-social-event-discovery",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "backgroundColor": "#2b6cb0"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#2b6cb0"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
