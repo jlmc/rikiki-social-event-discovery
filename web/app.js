@@ -17,6 +17,9 @@ const warningEl = document.getElementById('warning-banner');
 const modal = document.getElementById('details-modal');
 const modalContent = document.getElementById('modal-content');
 const modalClose = document.getElementById('modal-close');
+const filtersBar = document.getElementById('filters-bar');
+const stickySentinel = document.getElementById('sticky-sentinel');
+const filtersToggle = document.getElementById('filters-toggle');
 
 const dateFormatter = new Intl.DateTimeFormat('pt-PT', {
   weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -24,6 +27,27 @@ const dateFormatter = new Intl.DateTimeFormat('pt-PT', {
 const fullDateFormatter = new Intl.DateTimeFormat('pt-PT', {
   weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
 });
+
+// Purely visual: colors a badge based on keywords found in whatever
+// category text the source actually published (same substring spirit as
+// lib/filter-events.js's own type matching) — never changes or invents
+// the category itself. Order matters where a category could match more
+// than one rule (e.g. "Teatro e Dança / Cinema e Vídeo"); first hit wins.
+// Anything that matches nothing keeps the neutral default badge style.
+const CATEGORY_COLOR_RULES = [
+  [/concert|m[uú]sica/i, 'badge--concertos'],
+  [/teatro|dan[cç]a/i, 'badge--teatro'],
+  [/infantil|fam[ií]lia|crian[cç]as/i, 'badge--infantil'],
+  [/exposi[cç][aã]o|exposi[cç][oõ]es/i, 'badge--exposicoes'],
+  [/cinema|audiovisual|v[ií]deo/i, 'badge--cinema'],
+  [/desporto|bem[- ]estar/i, 'badge--desporto'],
+  [/tradi[cç][aã]o|mercado|feira|festa|romaria/i, 'badge--tradicao'],
+];
+
+function categoryColor(category) {
+  const match = CATEGORY_COLOR_RULES.find(([pattern]) => pattern.test(category || ''));
+  return match ? match[1] : '';
+}
 
 function summarize(description, maxLength = 160) {
   const paragraphs = (description || '').split('\n').filter(Boolean);
@@ -71,9 +95,10 @@ function escapeHtml(str) {
 function renderCard(event) {
   const card = document.createElement('div');
   card.className = 'card';
+  const badgeClass = categoryColor(event.category);
   card.innerHTML = `
     <span class="date">${dateFormatter.format(new Date(event.dateTime))}</span>
-    <span class="badge">${escapeHtml(event.category)}</span>
+    <span class="badge${badgeClass ? ' ' + badgeClass : ''}">${escapeHtml(event.category)}</span>
     <span class="title">${escapeHtml(event.title)}</span>
     <span class="location">${escapeHtml(event.location)} — ${escapeHtml(event.venue)}</span>
     ${event.description ? `<span class="description">${escapeHtml(summarize(event.description))}</span>` : ''}
@@ -139,6 +164,29 @@ form.addEventListener('submit', runSearch);
 // makes the button an explicit re-trigger rather than the only way in.
 for (const el of [startInput, endInput, locationSelect, typeSelect]) {
   el.addEventListener('change', runSearch);
+}
+
+// Toggles a `.stuck` class on the filters bar exactly when it has
+// detached from the page's normal flow and is sitting pinned at the top —
+// detected via a zero-height sentinel placed right above it, rather than
+// an arbitrary `scrollY` threshold, so it stays correct regardless of
+// page layout changes.
+if (filtersBar && stickySentinel && 'IntersectionObserver' in window) {
+  const stickyObserver = new IntersectionObserver(
+    ([entry]) => filtersBar.classList.toggle('stuck', !entry.isIntersecting),
+    { threshold: 0 }
+  );
+  stickyObserver.observe(stickySentinel);
+}
+
+// Below 640px the filter fields collapse behind this toggle (see
+// style.css) — irrelevant above that breakpoint, where CSS keeps
+// `.filters` visible regardless of the `.open` class.
+if (filtersToggle) {
+  filtersToggle.addEventListener('click', () => {
+    const isOpen = form.classList.toggle('open');
+    filtersToggle.setAttribute('aria-expanded', String(isOpen));
+  });
 }
 
 async function init() {

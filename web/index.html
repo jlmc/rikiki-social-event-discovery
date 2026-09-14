@@ -8,35 +8,43 @@
 </head>
 <body>
   <header class="page-header">
-    <img class="banner" src="banner.svg" alt="rikiki — eventos culturais e infantis em Coimbra e região" />
-    <p class="subtitle" id="generated-at">A carregar dados...</p>
+    <div class="content-col">
+      <img class="banner" src="banner.svg" alt="rikiki — eventos culturais e infantis em Coimbra e região" />
+      <p class="subtitle" id="generated-at">A carregar dados...</p>
+    </div>
   </header>
 
   <section id="warning-banner" class="warning" hidden></section>
 
-  <form id="filter-form" class="filters">
-    <div class="field">
-      <label for="start">Data de início</label>
-      <input type="date" id="start" name="start" />
-    </div>
-    <div class="field">
-      <label for="end">Data de fim *</label>
-      <input type="date" id="end" name="end" required />
-    </div>
-    <div class="field">
-      <label for="location">Localização</label>
-      <select id="location" name="location">
-        <option value="">Todas</option>
-      </select>
-    </div>
-    <div class="field">
-      <label for="type">Tipo</label>
-      <select id="type" name="type">
-        <option value="">Todos</option>
-      </select>
-    </div>
-    <button type="submit" class="search-button">Pesquisar</button>
-  </form>
+  <div id="sticky-sentinel"></div>
+  <div id="filters-bar" class="filters-bar">
+    <button type="button" id="filters-toggle" class="filters-toggle" aria-expanded="false" aria-controls="filter-form">
+      Filtros <span class="chevron">▾</span>
+    </button>
+    <form id="filter-form" class="filters">
+      <div class="field">
+        <label for="start">Data de início</label>
+        <input type="date" id="start" name="start" />
+      </div>
+      <div class="field">
+        <label for="end">Data de fim *</label>
+        <input type="date" id="end" name="end" required />
+      </div>
+      <div class="field">
+        <label for="location">Localização</label>
+        <select id="location" name="location">
+          <option value="">Todas</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="type">Tipo</label>
+        <select id="type" name="type">
+          <option value="">Todos</option>
+        </select>
+      </div>
+      <button type="submit" class="search-button">Pesquisar</button>
+    </form>
+  </div>
 
   <p id="result-count" class="result-count" hidden></p>
   <div id="results" class="card-grid"></div>

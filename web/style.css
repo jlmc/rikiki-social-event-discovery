@@ -36,18 +36,24 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
+.content-col {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
 .page-header {
-  padding: 16px 16px 4px;
+  padding: 16px 0 4px;
   text-align: center;
 }
 .banner {
   width: 100%;
-  max-width: 280px;
+  max-width: 500px;
   height: auto;
   border-radius: 14px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
 }
-.subtitle { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
+.subtitle { margin: 10px 0 0; color: var(--muted); font-size: 11px; opacity: 0.85; }
 
 .warning {
   margin: 12px 16px;
@@ -60,6 +66,35 @@ body {
 }
 .warning strong { display: block; margin-bottom: 4px; }
 
+#sticky-sentinel { height: 0; }
+
+.filters-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg);
+}
+.filters-bar.stuck {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.filters-toggle {
+  display: none;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 16px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.filters-toggle .chevron { transition: transform 0.15s ease; }
+.filters-toggle[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+
 .filters {
   display: flex;
   flex-wrap: wrap;
@@ -68,6 +103,16 @@ body {
   padding: 16px;
   max-width: 900px;
   margin: 0 auto;
+}
+
+/* Below 640px (the same breakpoint the modal already uses), the filter
+   fields wrap into several rows — keeping all of them permanently visible
+   while sticky would eat a lot of vertical space, so they collapse behind
+   the "Filtros" toggle above and only take up room when opened. */
+@media (max-width: 639px) {
+  .filters-toggle { display: flex; }
+  .filters { display: none; }
+  .filters.open { display: flex; }
 }
 .field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 160px; min-width: 140px; }
 .field label { font-size: 12px; font-weight: 600; color: var(--muted); }
@@ -130,17 +175,44 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.card:hover,
+.card:focus-within {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  transform: translateY(-2px);
 }
 .card .date { font-size: 12px; color: var(--muted); }
 .card .badge {
   align-self: flex-start;
-  background: var(--accent-bg);
-  color: var(--accent);
+  background: var(--badge-bg, var(--accent-bg));
+  color: var(--badge-color, var(--accent));
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   padding: 2px 8px;
   border-radius: 10px;
+}
+/* Category color-coding is purely visual (keyword-matched in app.js against
+   the category text each source publishes as-is — see
+   lib/filter-events.js's substring philosophy) — it never changes or
+   invents a category, just tints its badge for faster scanning. Any
+   category that doesn't match a keyword keeps the neutral accent above. */
+.badge--concertos { --badge-bg: #f0e6fa; --badge-color: #7c3aed; }
+.badge--teatro { --badge-bg: #fde6ef; --badge-color: #be185d; }
+.badge--infantil { --badge-bg: #fff4d6; --badge-color: #b45309; }
+.badge--exposicoes { --badge-bg: #e0f7f2; --badge-color: #0f766e; }
+.badge--cinema { --badge-bg: #e6e9fa; --badge-color: #4338ca; }
+.badge--desporto { --badge-bg: #e6f7e0; --badge-color: #3f7d20; }
+.badge--tradicao { --badge-bg: #fbe9e0; --badge-color: #c2410c; }
+@media (prefers-color-scheme: dark) {
+  .badge--concertos { --badge-bg: #2f2242; --badge-color: #c4a3f5; }
+  .badge--teatro { --badge-bg: #3a2130; --badge-color: #f4a6c8; }
+  .badge--infantil { --badge-bg: #3a2f10; --badge-color: #f0c26b; }
+  .badge--exposicoes { --badge-bg: #113330; --badge-color: #6fd8c7; }
+  .badge--cinema { --badge-bg: #262347; --badge-color: #adb2f2; }
+  .badge--desporto { --badge-bg: #1f3315; --badge-color: #9bd97f; }
+  .badge--tradicao { --badge-bg: #3a2013; --badge-color: #f0a877; }
 }
 .card .title { font-size: 16px; font-weight: 700; margin: 2px 0; }
 .card .location { font-size: 13px; color: var(--muted); }
