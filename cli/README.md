@@ -160,6 +160,7 @@ The results below may be incomplete.
 | ViralAgenda (nationwide aggregator) | [`providers/viral-agenda.js`](providers/viral-agenda.js) | All 17 municipalities of the Coimbra district (Arganil, Cantanhede, Coimbra, Condeixa-a-Nova, Figueira da Foz — includes the CAE, Góis, Lousã, Mira, Miranda do Corvo, Montemor-o-Velho, Oliveira do Hospital, Pampilhosa da Serra, Penacova, Penela, Soure, Tábua, Vila Nova de Poiares), plus Pombal (general listing + a dedicated concerts-category page, since Pombal's general page only shows its 20 soonest events across all categories and silently drops concerts scheduled further out) and Aveiro |
 | BOL — Bilheteira Online (`bol.pt`) | [`providers/bol.js`](providers/bol.js) | Box-office events in the Coimbra, Aveiro and Leiria districts (indirectly covers every requested location) |
 | Câmara Municipal de Soure (official) | [`providers/cm-soure.js`](providers/cm-soure.js) | Soure — its own "Eventos" and "Agenda" blog categories (see [note below](#note-on-cm-soures-free-text-dates)) |
+| Câmara Municipal de Condeixa-a-Nova (official) | [`providers/cm-condeixa.js`](providers/cm-condeixa.js) | Condeixa-a-Nova — the homepage's own "Agenda" widget (see [note below](#note-on-cm-condeixas-agenda-widget)) |
 
 ### Description and participants
 
@@ -265,6 +266,33 @@ matter: `/category/eventos/` (smaller/recurring community activities) and
 `/category/agenda/` (bigger "official" entries — this is where the town's
 main annual festival, "Festas de São Mateus", actually lives, not under
 "Eventos"). Both are scraped as separate sources.
+
+Observed during development: cm-soure.pt is a small municipal server that
+became unresponsive (whole-domain `503 Service Unavailable`, "capacity
+problems") under moderate concurrent load — detail-page fetches for this
+source are capped at 2 concurrent requests (lower than every other
+provider's 4) as a result, and this source going fully down for a while
+should be expected occasionally (it'll show up as `ok: false` with an
+HTTP 503 error, not silently — see [source-failure warnings](#architecture-two-step-pipeline)).
+
+### Note on cm-condeixa's Agenda widget
+
+cm-condeixa.pt has no dedicated events page: its homepage carries a
+`<section id="agenda">` widget that lists a handful of upcoming events
+directly, each already giving a clean, structured "DD de \<mês\> [a DD de
+\<mês\>]" date (e.g. "19 de Setembro", "2 de Setembro a 26 de Setembro") —
+no free-text parsing needed here, just no year (the current year is
+assumed, same reasoning `convento-sao-francisco.js` already uses for the
+same gap). Each event's own detail page is fetched for the full
+description, replacing the homepage's truncated summary when available.
+
+Two known limitations: the widget only ever surfaces whatever the
+municipality currently features (not a full agenda archive, so its count
+of upcoming events is small and can shrink to zero between updates — the
+same kind of source-side gap already documented for the smaller
+ViralAgenda municipalities); and no per-event category is exposed in the
+markup, so every event here gets a generic category — only location/
+venue/title filtering applies, not `-type` (same limitation as BOL).
 
 ### Categories
 

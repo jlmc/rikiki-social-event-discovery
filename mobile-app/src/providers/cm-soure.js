@@ -72,39 +72,45 @@ function resolveUrl(href, fallback) {
   }
 }
 
+// Returns `undefined` when the fetch itself failed — distinct from
+// `null`, which means the fetch worked but this post has no extractable
+// date (the expected, non-error outcome of the conservative parsing this
+// provider does). getEventsForCategory uses that distinction to tell
+// "this post has no date" apart from "the site looks down".
 async function fetchEvent({ title, url, label }) {
+  let response;
   try {
-    const response = await fetchWithTimeout(url, { headers: { 'User-Agent': USER_AGENT } });
-    if (!response.ok) return null;
-
-    const html = await response.text();
-    const root = parse(html);
-
-    const publishedMatch = html.match(/article:published_time"\s+content="(\d{4})-/);
-    const fallbackYear = publishedMatch ? Number(publishedMatch[1]) : new Date().getFullYear();
-
-    const contentHtml = root.querySelector(
-      '.elementor-widget-theme-post-content .elementor-widget-container'
-    )?.innerHTML;
-    const text = cleanHtmlToText(contentHtml);
-    if (!text) return null;
-
-    const startDateTime = extractStartDateTime(text, fallbackYear);
-    if (!startDateTime) return null;
-
-    return {
-      title,
-      category: 'Eventos',
-      location: LOCATION,
-      venue: LOCATION,
-      dateTime: startDateTime.toISOString(),
-      source: `cm-soure.pt (${label})`,
-      url,
-      description: text,
-    };
+    response = await fetchWithTimeout(url, { headers: { 'User-Agent': USER_AGENT } });
   } catch {
-    return null;
+    return undefined;
   }
+  if (!response.ok) return undefined;
+
+  const html = await response.text();
+  const root = parse(html);
+
+  const publishedMatch = html.match(/article:published_time"\s+content="(\d{4})-/);
+  const fallbackYear = publishedMatch ? Number(publishedMatch[1]) : new Date().getFullYear();
+
+  const contentHtml = root.querySelector(
+    '.elementor-widget-theme-post-content .elementor-widget-container'
+  )?.innerHTML;
+  const text = cleanHtmlToText(contentHtml);
+  if (!text) return null;
+
+  const startDateTime = extractStartDateTime(text, fallbackYear);
+  if (!startDateTime) return null;
+
+  return {
+    title,
+    category: 'Eventos',
+    location: LOCATION,
+    venue: LOCATION,
+    dateTime: startDateTime.toISOString(),
+    source: `cm-soure.pt (${label})`,
+    url,
+    description: text,
+  };
 }
 
 async function getEventsForCategory(pageUrl, label) {
@@ -127,8 +133,19 @@ async function getEventsForCategory(pageUrl, label) {
     posts.push({ title, url: resolveUrl(href, pageUrl), label });
   }
 
-  const events = await mapWithLimit(posts, 4, fetchEvent);
-  return events.filter(Boolean);
+  // Lower concurrency than the other providers (4) — this is a small
+  // municipal server, observed to become unresponsive (whole-domain 503,
+  // "capacity problems") under moderate concurrent load during testing.
+  const results = await mapWithLimit(posts, 2, fetchEvent);
+
+  // Every detail-page fetch failing outright means the site is likely
+  // down/overloaded right now — surface that as a real failure instead of
+  // silently reporting an empty (but "ok") category.
+  if (posts.length > 0 && results.every((r) => r === undefined)) {
+    throw new Error(`all ${posts.length} detail-page fetches failed for ${pageUrl}`);
+  }
+
+  return results.filter(Boolean);
 }
 
 // Each category is its own independent "source": a failure fetching one

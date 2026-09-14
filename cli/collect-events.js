@@ -19,6 +19,7 @@ const viralAgenda = require('./providers/viral-agenda');
 const conventoSaoFrancisco = require('./providers/convento-sao-francisco');
 const bol = require('./providers/bol');
 const cmSoure = require('./providers/cm-soure');
+const cmCondeixa = require('./providers/cm-condeixa');
 
 const OUTPUT_FILE = path.join(__dirname, 'events.json');
 
@@ -75,6 +76,7 @@ async function main() {
       getEvents: conventoSaoFrancisco.getEvents,
     },
     { name: bol.name, url: bol.url, getEvents: bol.getEvents },
+    { name: cmCondeixa.name, url: cmCondeixa.url, getEvents: cmCondeixa.getEvents },
     ...cmSoureSources,
     ...viralAgendaSources,
   ];

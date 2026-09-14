@@ -10,6 +10,7 @@ import * as viralAgenda from '../providers/viral-agenda';
 import * as conventoSaoFrancisco from '../providers/convento-sao-francisco';
 import * as bol from '../providers/bol';
 import * as cmSoure from '../providers/cm-soure';
+import * as cmCondeixa from '../providers/cm-condeixa';
 
 function dedupeKey(event) {
   const isoDay = event.dateTime.slice(0, 10);
@@ -66,6 +67,7 @@ export async function collectEvents() {
       getEvents: conventoSaoFrancisco.getEvents,
     },
     { name: bol.name, url: bol.url, getEvents: bol.getEvents },
+    { name: cmCondeixa.name, url: cmCondeixa.url, getEvents: cmCondeixa.getEvents },
     ...cmSoureSources,
     ...viralAgendaSources,
   ];

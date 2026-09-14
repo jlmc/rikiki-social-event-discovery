@@ -79,42 +79,51 @@ function extractStartDateTime(text, fallbackYear) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+// Returns `undefined` when the fetch itself failed (network error, bad
+// HTTP status) — distinct from a `null` return, which means the fetch
+// worked fine but this particular post has no extractable date (the
+// expected, non-error outcome of the conservative parsing this provider
+// does). getEventsForCategory uses that distinction to tell "this
+// specific post has no date" apart from "the site looks down" — a whole
+// category returning nothing but `undefined`s means every request failed,
+// which points at a broken/overloaded server, not an empty agenda.
 async function fetchEvent({ title, url, label }) {
+  let response;
   try {
-    const response = await fetch(url, {
+    response = await fetch(url, {
       headers: { 'User-Agent': USER_AGENT },
       signal: AbortSignal.timeout(15000),
     });
-    if (!response.ok) return null;
-
-    const html = await response.text();
-    const $ = cheerio.load(html);
-
-    const publishedMatch = html.match(/article:published_time"\s+content="(\d{4})-/);
-    const fallbackYear = publishedMatch ? Number(publishedMatch[1]) : new Date().getFullYear();
-
-    const contentHtml = $('.elementor-widget-theme-post-content .elementor-widget-container')
-      .first()
-      .html();
-    const text = cleanHtmlToText(contentHtml);
-    if (!text) return null;
-
-    const startDateTime = extractStartDateTime(text, fallbackYear);
-    if (!startDateTime) return null;
-
-    return {
-      title,
-      category: 'Eventos',
-      location: LOCATION,
-      venue: LOCATION,
-      dateTime: startDateTime.toISOString(),
-      source: `cm-soure.pt (${label})`,
-      url,
-      description: text,
-    };
   } catch {
-    return null;
+    return undefined;
   }
+  if (!response.ok) return undefined;
+
+  const html = await response.text();
+  const $ = cheerio.load(html);
+
+  const publishedMatch = html.match(/article:published_time"\s+content="(\d{4})-/);
+  const fallbackYear = publishedMatch ? Number(publishedMatch[1]) : new Date().getFullYear();
+
+  const contentHtml = $('.elementor-widget-theme-post-content .elementor-widget-container')
+    .first()
+    .html();
+  const text = cleanHtmlToText(contentHtml);
+  if (!text) return null;
+
+  const startDateTime = extractStartDateTime(text, fallbackYear);
+  if (!startDateTime) return null;
+
+  return {
+    title,
+    category: 'Eventos',
+    location: LOCATION,
+    venue: LOCATION,
+    dateTime: startDateTime.toISOString(),
+    source: `cm-soure.pt (${label})`,
+    url,
+    description: text,
+  };
 }
 
 async function getEventsForCategory(pageUrl, label) {
@@ -141,8 +150,21 @@ async function getEventsForCategory(pageUrl, label) {
     posts.push({ title, url: new URL(href, pageUrl).toString(), label });
   });
 
-  const events = await mapWithLimit(posts, 4, fetchEvent);
-  return events.filter(Boolean);
+  // Lower concurrency than the other providers (4) — this is a small
+  // municipal server, observed to become unresponsive (whole-domain 503,
+  // "capacity problems") under moderate concurrent load during testing.
+  const results = await mapWithLimit(posts, 2, fetchEvent);
+
+  // Every detail-page fetch failing outright (not "no date found", but
+  // the request itself failing) means the site is likely down/overloaded
+  // right now — surface that as a real failure instead of silently
+  // reporting an empty (but "ok") category, which would look like "no
+  // events today" instead of "couldn't reach the site".
+  if (posts.length > 0 && results.every((r) => r === undefined)) {
+    throw new Error(`all ${posts.length} detail-page fetches failed for ${pageUrl}`);
+  }
+
+  return results.filter(Boolean);
 }
 
 // Each category is its own independent "source": a failure fetching one
