@@ -73,14 +73,21 @@ chmod +x list-events.sh   # usually already executable
 ./list-events.sh -end 2026-12-31 -location "figueira da foz"
 ./list-events.sh -end 2026-12-31 -location soure
 ./list-events.sh -end 2026-12-31 -location "condeixa-a-nova"
+./list-events.sh -end 2026-12-31 -location "montemor-o-velho"
+./list-events.sh -end 2026-12-31 -location penela
 ./list-events.sh -end 2026-12-31 -location pombal
 ./list-events.sh -end 2026-12-31 -location aveiro
 ```
 
-Condeixa-a-Nova and Soure have less cultural activity recorded in the
-sources used than the other locations — it's not unusual for the filter to
+Smaller municipalities have less cultural activity recorded in the sources
+used than Coimbra or Figueira da Foz — it's not unusual for the filter to
 return few or no events, depending on the real agenda at the time you run
-the command (that's not a bug).
+the command (that's not a bug). In particular, ViralAgenda's own
+per-municipality pages don't always keep a rolling window of upcoming
+events: some (observed for Montemor-o-Velho, Penela and even Pombal at
+times) can sit with their most recent listed event already in the past,
+so a `-location` filter for one of them can legitimately return zero
+results until that source's page is updated with new listings.
 
 ### Examples by event type
 
@@ -150,7 +157,7 @@ The results below may be incomplete.
 |---|---|---|
 | Agenda de Coimbra (official, City Council + University of Coimbra) | [`providers/agenda-coimbra.js`](providers/agenda-coimbra.js) | Coimbra (Convento de São Francisco, TAGV, UC Exploratório, Casa Municipal da Cultura, etc.) |
 | Convento São Francisco (official, Coimbra Cultura e Congressos) | [`providers/convento-sao-francisco.js`](providers/convento-sao-francisco.js) | Convento São Francisco, with room-level detail (Antiga Igreja, Grande Auditório, etc.) |
-| ViralAgenda (nationwide aggregator) | [`providers/viral-agenda.js`](providers/viral-agenda.js) | Coimbra, Figueira da Foz (includes the CAE), Soure, Condeixa-a-Nova, Pombal, Aveiro |
+| ViralAgenda (nationwide aggregator) | [`providers/viral-agenda.js`](providers/viral-agenda.js) | All 17 municipalities of the Coimbra district (Arganil, Cantanhede, Coimbra, Condeixa-a-Nova, Figueira da Foz — includes the CAE, Góis, Lousã, Mira, Miranda do Corvo, Montemor-o-Velho, Oliveira do Hospital, Pampilhosa da Serra, Penacova, Penela, Soure, Tábua, Vila Nova de Poiares), plus Pombal (general listing + a dedicated concerts-category page, since Pombal's general page only shows its 20 soonest events across all categories and silently drops concerts scheduled further out) and Aveiro |
 | BOL — Bilheteira Online (`bol.pt`) | [`providers/bol.js`](providers/bol.js) | Box-office events in the Coimbra, Aveiro and Leiria districts (indirectly covers every requested location) |
 
 ### Description and participants
@@ -216,14 +223,25 @@ scraper or invent data:
 | CAE — Centro de Artes e Espectáculos (`cae.pt`) | Its own "Programação" page loads the event list in a way that never shows up in the returned HTML (neither via a plain `fetch()`, nor in the DOM after load) — it seems to require further interaction. Already covered robustly via ViralAgenda (`/pt/coimbra/figueira-da-foz`) and via BOL. |
 | BOL by venue subdomain (e.g. `tagv.bol.pt`) | An old ASP.NET WebForms app: the show list is built via postback/UpdatePanel, with no JSON API available — replicating that would mean simulating `__VIEWSTATE` tokens on every request (very fragile) or using a real browser. The main `bol.pt` site doesn't have this problem (see [Data sources](#data-sources)) and is included for that reason. |
 
-### Note on the Condeixa-a-Nova slug
+### Note on ViralAgenda slugs and the Pombal concerts page
 
-Unlike most locations on ViralAgenda, the Condeixa-a-Nova slug doesn't
-follow the "name-with-hyphens" pattern (`condeixa-a-nova` returns a 404) —
-it's `condeixaanova`, with no hyphens at all. It was only found by
-inspecting the list of locations embedded in the site itself; that's why
-the slugs in [`providers/viral-agenda.js`](providers/viral-agenda.js) were
-confirmed one by one instead of generated from the name.
+Unlike most locations on ViralAgenda, a few slugs don't follow the
+"name-with-hyphens" pattern: Condeixa-a-Nova is `condeixaanova` and
+Montemor-o-Velho is `montemorovelho` — both with the hyphens dropped
+entirely (`condeixa-a-nova` and `montemor-o-velho` return 404). These were
+only found by checking each URL individually; that's why the slugs in
+[`providers/viral-agenda.js`](providers/viral-agenda.js) were confirmed one
+by one instead of generated from the name.
+
+Pombal is also scraped twice: its general page
+(`/pt/leiria/pombal`) only shows the 20 soonest events across every
+category, so a municipality with a lot of concerts specifically can have
+some silently pushed off that page. `/pt/leiria/pombal/concerts` is the
+same site's category-filtered view, with its own top-20 window — scraping
+both surfaces events the general page alone would miss. Both sources
+report events under the same `location: "Pombal"`, and any genuine overlap
+between the two pages is still deduplicated (by title + day) like any
+other pair of sources.
 
 ### Categories
 
