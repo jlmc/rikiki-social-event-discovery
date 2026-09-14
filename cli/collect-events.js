@@ -18,6 +18,7 @@ const agendaCoimbra = require('./providers/agenda-coimbra');
 const viralAgenda = require('./providers/viral-agenda');
 const conventoSaoFrancisco = require('./providers/convento-sao-francisco');
 const bol = require('./providers/bol');
+const cmSoure = require('./providers/cm-soure');
 
 const OUTPUT_FILE = path.join(__dirname, 'events.json');
 
@@ -65,6 +66,7 @@ async function main() {
   const allEvents = [];
 
   const viralAgendaSources = await viralAgenda.getSources();
+  const cmSoureSources = await cmSoure.getSources();
   const sources = [
     { name: agendaCoimbra.name, url: agendaCoimbra.url, getEvents: agendaCoimbra.getEvents },
     {
@@ -73,6 +75,7 @@ async function main() {
       getEvents: conventoSaoFrancisco.getEvents,
     },
     { name: bol.name, url: bol.url, getEvents: bol.getEvents },
+    ...cmSoureSources,
     ...viralAgendaSources,
   ];
 

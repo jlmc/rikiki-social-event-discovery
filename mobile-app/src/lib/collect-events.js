@@ -9,6 +9,7 @@ import * as agendaCoimbra from '../providers/agenda-coimbra';
 import * as viralAgenda from '../providers/viral-agenda';
 import * as conventoSaoFrancisco from '../providers/convento-sao-francisco';
 import * as bol from '../providers/bol';
+import * as cmSoure from '../providers/cm-soure';
 
 function dedupeKey(event) {
   const isoDay = event.dateTime.slice(0, 10);
@@ -56,6 +57,7 @@ export async function collectEvents() {
   const allEvents = [];
 
   const viralAgendaSources = await viralAgenda.getSources();
+  const cmSoureSources = await cmSoure.getSources();
   const sources = [
     { name: agendaCoimbra.name, url: agendaCoimbra.url, getEvents: agendaCoimbra.getEvents },
     {
@@ -64,6 +66,7 @@ export async function collectEvents() {
       getEvents: conventoSaoFrancisco.getEvents,
     },
     { name: bol.name, url: bol.url, getEvents: bol.getEvents },
+    ...cmSoureSources,
     ...viralAgendaSources,
   ];
 

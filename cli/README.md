@@ -159,6 +159,7 @@ The results below may be incomplete.
 | Convento São Francisco (official, Coimbra Cultura e Congressos) | [`providers/convento-sao-francisco.js`](providers/convento-sao-francisco.js) | Convento São Francisco, with room-level detail (Antiga Igreja, Grande Auditório, etc.) |
 | ViralAgenda (nationwide aggregator) | [`providers/viral-agenda.js`](providers/viral-agenda.js) | All 17 municipalities of the Coimbra district (Arganil, Cantanhede, Coimbra, Condeixa-a-Nova, Figueira da Foz — includes the CAE, Góis, Lousã, Mira, Miranda do Corvo, Montemor-o-Velho, Oliveira do Hospital, Pampilhosa da Serra, Penacova, Penela, Soure, Tábua, Vila Nova de Poiares), plus Pombal (general listing + a dedicated concerts-category page, since Pombal's general page only shows its 20 soonest events across all categories and silently drops concerts scheduled further out) and Aveiro |
 | BOL — Bilheteira Online (`bol.pt`) | [`providers/bol.js`](providers/bol.js) | Box-office events in the Coimbra, Aveiro and Leiria districts (indirectly covers every requested location) |
+| Câmara Municipal de Soure (official) | [`providers/cm-soure.js`](providers/cm-soure.js) | Soure — its own "Eventos" and "Agenda" blog categories (see [note below](#note-on-cm-soures-free-text-dates)) |
 
 ### Description and participants
 
@@ -242,6 +243,28 @@ both surfaces events the general page alone would miss. Both sources
 report events under the same `location: "Pombal"`, and any genuine overlap
 between the two pages is still deduplicated (by title + day) like any
 other pair of sources.
+
+### Note on cm-soure's free-text dates
+
+Unlike every other source here, cm-soure.pt doesn't publish the event date
+as a structured field — each post's date lives inside ordinary Portuguese
+prose in the article body (e.g. "Nos dias 12 e 13 de setembro de 2026, a
+Ribeira da Mata recebe..."). [`providers/cm-soure.js`](providers/cm-soure.js)
+extracts it with a "DD de \<mês\> [de YYYY]" pattern and picks the first day
+of a range (so "dias 4, 5 e 6 de setembro" resolves to the 4th, the actual
+start), but it's conservative on purpose: when no such pattern is found in
+a post, that post is silently skipped rather than falling back to the
+post's own publish date (which is when the announcement was written, not
+when the event happens) or inventing a date the text doesn't give. A
+missing year defaults to the post's publish year; a missing time defaults
+to midnight — both documented placeholders, never guesses dressed up as
+data.
+
+The site also splits its content across two blog categories that both
+matter: `/category/eventos/` (smaller/recurring community activities) and
+`/category/agenda/` (bigger "official" entries — this is where the town's
+main annual festival, "Festas de São Mateus", actually lives, not under
+"Eventos"). Both are scraped as separate sources.
 
 ### Categories
 
