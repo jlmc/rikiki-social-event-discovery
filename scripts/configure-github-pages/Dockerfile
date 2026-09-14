@@ -8,6 +8,7 @@ WORKDIR /work
 COPY lib.sh /usr/local/lib/gh-pages/lib.sh
 COPY configure.sh /usr/local/bin/configure.sh
 COPY trigger.sh /usr/local/bin/trigger.sh
-RUN chmod +x /usr/local/bin/configure.sh /usr/local/bin/trigger.sh
+COPY set-email-secrets.sh /usr/local/bin/set-email-secrets.sh
+RUN chmod +x /usr/local/bin/configure.sh /usr/local/bin/trigger.sh /usr/local/bin/set-email-secrets.sh
 
 ENTRYPOINT ["/usr/local/bin/configure.sh"]

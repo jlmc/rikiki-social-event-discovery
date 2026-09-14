@@ -68,3 +68,10 @@ After that first run, the workflow keeps itself going: every 6 hours, on every p
 `master` that touches `web/`, `cli/collect-events.js` or `cli/providers/`, and on-demand from
 the Actions tab (**Run workflow**) — each run re-scrapes the real sources and republishes the
 site with fresh data.
+
+If a source fails during one of these runs, the site still deploys (with the same in-UI
+warning `app.js` already shows), but the workflow also sends an alarming email so it doesn't
+go unnoticed between visits — see
+[`../scripts/README.md`](../scripts/README.md#configure-email-alertssh) for the one-time
+setup. This is opt-in: the email step only runs once its secrets are configured, so skipping
+that setup just means no email is sent.

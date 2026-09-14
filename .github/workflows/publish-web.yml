@@ -49,6 +49,64 @@ jobs:
           npm ci
           node collect-events.js
 
+      - name: Check for source failures
+        id: check-failures
+        working-directory: cli
+        run: |
+          FAILED_COUNT=$(jq '[.sources[] | select(.ok == false)] | length' events.json)
+          echo "count=$FAILED_COUNT" >> "$GITHUB_OUTPUT"
+          if [ "$FAILED_COUNT" -gt 0 ]; then
+            echo "has_failures=true" >> "$GITHUB_OUTPUT"
+            {
+              echo 'summary<<EOF'
+              jq -r '.sources[] | select(.ok == false) | "- " + .name + ": " + .error' events.json
+              echo 'EOF'
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "has_failures=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A failed source doesn't stop the pipeline (the site still deploys
+      # with a visible in-UI warning — see web/app.js), so nobody would
+      # otherwise notice a broken source between scheduled runs. This is
+      # deliberately loud (alarmist subject/body, requested explicitly) and
+      # fires on every failing run, with no debounce/state between runs.
+      #
+      # Guarded on all three secrets being set (not just has_failures) so
+      # this step is a silent no-op — not a failure — in a fork or before
+      # scripts/configure-email-alerts.sh has been run once. The
+      # destination address is itself a secret (ALERT_EMAIL), never
+      # hardcoded here, so it isn't exposed in this public repo's history.
+      - name: Send alarming email if a source failed
+        if: >-
+          steps.check-failures.outputs.has_failures == 'true' &&
+          secrets.SMTP_USERNAME != '' &&
+          secrets.SMTP_PASSWORD != '' &&
+          secrets.ALERT_EMAIL != ''
+        continue-on-error: true
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          from: Rikiki Alertas <${{ secrets.SMTP_USERNAME }}>
+          to: ${{ secrets.ALERT_EMAIL }}
+          subject: "🚨🚨🚨 ALERTA: ${{ steps.check-failures.outputs.count }} fonte(s) de eventos FALHARAM no Rikiki! 🚨🚨🚨"
+          body: |
+            🚨🚨🚨 ATENÇÃO! 🚨🚨🚨
+
+            A recolha automática de eventos do Rikiki teve ${{ steps.check-failures.outputs.count }} fonte(s) a falhar agora mesmo:
+
+            ${{ steps.check-failures.outputs.summary }}
+
+            Os dados publicados em https://jlmc.github.io/rikiki-social-event-discovery/ podem estar incompletos até isto ser corrigido!
+
+            Vê os detalhes completos aqui:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            🚨🚨🚨 AÇÃO NECESSÁRIA 🚨🚨🚨
+
       - name: Assemble the static site
         run: |
           cp cli/events.json web/events.json

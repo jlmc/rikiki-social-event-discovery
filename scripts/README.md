@@ -40,3 +40,36 @@ GH_TOKEN=<your-github-token> ./trigger-web-refresh.sh
 ```
 
 Same Docker image and token permissions as `configure-github-pages.sh` above.
+
+## `configure-email-alerts.sh`
+
+One-time setup for the alarming email `publish-web.yml` sends whenever a data source fails
+during collection (see [`../.github/workflows/publish-web.yml`](../.github/workflows/publish-web.yml)).
+Sets the three repository secrets that step needs:
+
+```bash
+GH_TOKEN=<your-github-token> \
+SMTP_USERNAME=<your-gmail-address> \
+SMTP_PASSWORD=<a-gmail-app-password> \
+ALERT_EMAIL=<where-to-send-the-alert> \
+  ./configure-email-alerts.sh
+```
+
+`SMTP_USERNAME`/`SMTP_PASSWORD` are a Gmail account and an **App Password** for it — not its
+normal login password. Generate one at
+[myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) (needs
+2-Step Verification enabled on the account first). `ALERT_EMAIL` is optional and defaults to
+`SMTP_USERNAME` (email yourself) — it's its own secret, not hardcoded in the workflow, so no
+personal address ends up committed in this public repo's history.
+
+The workflow's email step checks that `SMTP_USERNAME`, `SMTP_PASSWORD` and `ALERT_EMAIL` are
+all set before running — until this script has been run once, it's a silent no-op rather than
+a failure.
+
+Same Docker image as the two scripts above, with a different entrypoint. `GH_TOKEN` needs
+the `repo` scope (classic PAT) or `Secrets: Read and write` (fine-grained PAT) on this
+repository. All values are only ever passed in as environment variables for that one
+container run — never written to disk or committed anywhere.
+
+This only needs to run once per repository; the secrets persist until changed. Re-running it
+just overwrites both secrets with whatever you pass in.
