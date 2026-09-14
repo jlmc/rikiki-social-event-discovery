@@ -36,6 +36,14 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    # Step-level `if:` conditions can't reference the `secrets` context
+    # directly (GitHub rejects the workflow at dispatch time with
+    # "Unrecognized named-value: 'secrets'") — mapping them to job-level
+    # env vars first works around that, since `env` *is* available in `if:`.
+    env:
+      SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -80,18 +88,18 @@ jobs:
       - name: Send alarming email if a source failed
         if: >-
           steps.check-failures.outputs.has_failures == 'true' &&
-          secrets.SMTP_USERNAME != '' &&
-          secrets.SMTP_PASSWORD != '' &&
-          secrets.ALERT_EMAIL != ''
+          env.SMTP_USERNAME != '' &&
+          env.SMTP_PASSWORD != '' &&
+          env.ALERT_EMAIL != ''
         continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
           server_port: 465
-          username: ${{ secrets.SMTP_USERNAME }}
-          password: ${{ secrets.SMTP_PASSWORD }}
-          from: Rikiki Alertas <${{ secrets.SMTP_USERNAME }}>
-          to: ${{ secrets.ALERT_EMAIL }}
+          username: ${{ env.SMTP_USERNAME }}
+          password: ${{ env.SMTP_PASSWORD }}
+          from: Rikiki Alertas <${{ env.SMTP_USERNAME }}>
+          to: ${{ env.ALERT_EMAIL }}
           subject: "🚨🚨🚨 ALERTA: ${{ steps.check-failures.outputs.count }} fonte(s) de eventos FALHARAM no Rikiki! 🚨🚨🚨"
           body: |
             🚨🚨🚨 ATENÇÃO! 🚨🚨🚨
