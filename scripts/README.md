@@ -65,11 +65,45 @@ ALERT_EMAIL=<where-to-send-the-alert> \
 ```
 
 `SMTP_USERNAME`/`SMTP_PASSWORD` are a Gmail account and an **App Password** for it — not its
-normal login password. Generate one at
-[myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) (needs
-2-Step Verification enabled on the account first). `ALERT_EMAIL` is optional and defaults to
+normal login password; Gmail's SMTP rejects the normal password once 2-Step Verification is
+on ("Less secure app access" no longer exists). `ALERT_EMAIL` is optional and defaults to
 `SMTP_USERNAME` (email yourself) — it's its own secret, not hardcoded in the workflow, so no
 personal address ends up committed in this public repo's history.
+
+### Generating the Gmail App Password
+
+1. On the Gmail account that will send the alert, go to **Google Account → Segurança e
+   início de sessão** and confirm **Verificação em 2 passos** is on — the App Passwords
+   option is hidden entirely until it is.
+2. Go directly to
+   [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) (it isn't
+   linked from the main Security page's menu).
+3. Give it any name (e.g. `rikiki-github-actions`) and create it.
+4. Google shows a 16-character password in 4 groups (e.g. `abcd efgh ijkl mnop`) — use it
+   **without the spaces** as `SMTP_PASSWORD`.
+
+**Treat that password like any other secret**: never paste it into a chat, an issue, a commit,
+or a screenshot — anywhere it could be logged or persisted outside your own terminal. Type or
+paste it directly into the `SMTP_PASSWORD=...` command below, in your own shell, not
+anywhere else. If it's ever exposed by accident, revoke it immediately from the same
+"Palavras-passe de apps" page (a trash icon next to its name) and generate a fresh one before
+using it.
+
+### Troubleshooting: "Invalid login: 535-5.7.8 Username and Password not accepted"
+
+This shows up as an **annotation** on the workflow run (visible even without signing in, on
+the run's summary page) — the email step's `continue-on-error: true` means the job itself
+still shows "success" even though the send failed, so the annotation is the actual signal to
+check, not the job's overall status. It means Gmail rejected `SMTP_USERNAME`/`SMTP_PASSWORD`.
+Most common causes, roughly in order of likelihood:
+- `SMTP_PASSWORD` is the account's normal login password, not an App Password.
+- 2-Step Verification isn't actually enabled on that account (App Passwords silently doesn't
+  work without it, even if you have an old one saved).
+- The App Password was copied with its spaces still in it.
+- `SMTP_USERNAME` doesn't match the Google account the App Password was generated on.
+
+Fix: generate a fresh App Password (see above) and re-run `configure-email-alerts.sh` with
+it.
 
 The workflow's email step checks that `SMTP_USERNAME`, `SMTP_PASSWORD` and `ALERT_EMAIL` are
 all set before running — until this script has been run once, it's a silent no-op rather than
@@ -81,4 +115,4 @@ repository. All values are only ever passed in as environment variables for that
 container run — never written to disk or committed anywhere.
 
 This only needs to run once per repository; the secrets persist until changed. Re-running it
-just overwrites both secrets with whatever you pass in.
+just overwrites all three secrets with whatever you pass in.
