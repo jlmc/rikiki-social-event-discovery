@@ -12,7 +12,17 @@ name: Publish web/ to GitHub Pages
 on:
   schedule:
     - cron: '0 */6 * * *' # every 6 hours
-  workflow_dispatch: {} # allows a manual run from the Actions tab
+  workflow_dispatch:
+    inputs:
+      simulate_failure:
+        description: >-
+          Force the "source failed" email alert to fire, to test delivery
+          on demand — never touches real provider data or the deployed
+          events.json, just makes this one run's email step believe a
+          source failed.
+        required: false
+        default: false
+        type: boolean
   push:
     branches: [master]
     paths:
@@ -57,17 +67,30 @@ jobs:
           npm ci
           node collect-events.js
 
+      # SIMULATE lets the email step be tested on demand (from the Actions
+      # tab or `trigger.sh SIMULATE_FAILURE=true`) without depending on any
+      # real provider actually being down — it only affects this run's
+      # check-failures outputs, never cli/events.json or the deployed
+      # site's data/warning banner.
       - name: Check for source failures
         id: check-failures
         working-directory: cli
+        env:
+          SIMULATE: ${{ github.event.inputs.simulate_failure }}
         run: |
           FAILED_COUNT=$(jq '[.sources[] | select(.ok == false)] | length' events.json)
+          if [ "$SIMULATE" = "true" ]; then
+            FAILED_COUNT=$((FAILED_COUNT + 1))
+          fi
           echo "count=$FAILED_COUNT" >> "$GITHUB_OUTPUT"
           if [ "$FAILED_COUNT" -gt 0 ]; then
             echo "has_failures=true" >> "$GITHUB_OUTPUT"
             {
               echo 'summary<<EOF'
               jq -r '.sources[] | select(.ok == false) | "- " + .name + ": " + .error' events.json
+              if [ "$SIMULATE" = "true" ]; then
+                echo "- simulated-failure (teste manual): disparado propositadamente via workflow_dispatch para testar o envio do email — não é um problema real."
+              fi
               echo 'EOF'
             } >> "$GITHUB_OUTPUT"
           else

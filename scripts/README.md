@@ -41,6 +41,15 @@ GH_TOKEN=<your-github-token> ./trigger-web-refresh.sh
 
 Same Docker image and token permissions as `configure-github-pages.sh` above.
 
+**Testing the email alert on demand**, without waiting for (or faking) a real provider
+failure: `SIMULATE_FAILURE=true` makes that one run's "a source failed" condition true, so the
+alarming email fires (once `configure-email-alerts.sh` below has been run) — it never touches
+any real provider or the deployed `events.json`/warning banner, only this run's email step.
+
+```bash
+GH_TOKEN=<your-github-token> SIMULATE_FAILURE=true ./trigger-web-refresh.sh
+```
+
 ## `configure-email-alerts.sh`
 
 One-time setup for the alarming email `publish-web.yml` sends whenever a data source fails

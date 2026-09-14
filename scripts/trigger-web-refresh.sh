@@ -14,6 +14,11 @@
 # Usage:
 #   GH_TOKEN=<your-github-token> ./scripts/trigger-web-refresh.sh
 #
+# SIMULATE_FAILURE=true tests the email-alert step on demand — forces this
+# one run's "source failed" condition without touching any real provider
+# or the deployed events.json:
+#   GH_TOKEN=<your-github-token> SIMULATE_FAILURE=true ./scripts/trigger-web-refresh.sh
+#
 # See scripts/README.md for the token permissions needed.
 # ==============================================================================
 
@@ -48,4 +53,5 @@ docker run --rm \
   -e GH_TOKEN \
   -e "REPO=${REPO:-jlmc/rikiki-social-event-discovery}" \
   -e "WORKFLOW_FILE=${WORKFLOW_FILE:-publish-web.yml}" \
+  -e "SIMULATE_FAILURE=${SIMULATE_FAILURE:-false}" \
   "$IMAGE_TAG"

@@ -24,13 +24,16 @@ authenticate() {
 }
 
 # Triggers a workflow_dispatch run and watches it to completion, printing
-# progress as it goes. Exits non-zero if the run fails.
+# progress as it goes. Exits non-zero if the run fails. Any extra args are
+# passed straight through to `gh workflow run` (e.g. `-f
+# simulate_failure=true`).
 trigger_and_watch_workflow() {
   local repo="$1" workflow_file="$2"
+  shift 2
 
   echo
   echo "== Triggering $workflow_file now =="
-  gh workflow run "$workflow_file" --repo "$repo"
+  gh workflow run "$workflow_file" --repo "$repo" "$@"
 
   echo "Waiting for the run to be picked up..."
   local run_id=""
